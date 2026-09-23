@@ -237,6 +237,15 @@ high_resolution_scrolling_description = "래칫 단계 사이의 미세한 움�
 wheel_resolution_unsupported = "이 기기는 휠 해상도 제어를 지원하지 않습니다."
 wheel_resolution_other_connection = "다른 연결 방식에서는 휠 해상도를 지원하지만 현재 연결에서는 지원하지 않습니다."
 smartshift = "SmartShift"
+gestures_and_presses = "Gestures & presses"
+gesture_distance = "Gesture distance"
+gesture_distance_description = "How far to move the mouse while holding a gesture button before the gesture fires."
+gesture_hold = "Hold before gesture"
+gesture_hold_description = "How long to hold a gesture button before movement counts as a gesture instead of a click."
+long_press_delay = "Long press"
+long_press_delay_description = "How long to hold a button before its long-press action fires."
+duration_ms = "%{value} ms"
+reset_gesture_defaults = "Reset to defaults"
 
 [actions]
 bind_control = "%{name} 지정"

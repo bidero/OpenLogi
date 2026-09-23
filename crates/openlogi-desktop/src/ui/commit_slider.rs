@@ -12,6 +12,7 @@ use std::rc::Rc;
 
 use gpui::{App, AppContext as _, Context, Entity, Subscription, Window};
 use gpui_component::slider::{SliderEvent, SliderState};
+use openlogi_core::binding::{LongPressDelay, SwipeDistance, SwipeHold};
 use openlogi_core::config::{ThumbwheelSensitivity, VerticalScrollSensitivity};
 use openlogi_core::hid::{Dpi, SmartShiftThreshold};
 
@@ -89,7 +90,10 @@ macro_rules! rounded_slider_unit {
 
 rounded_slider_unit!(
     Dpi,
+    LongPressDelay,
     SmartShiftThreshold,
+    SwipeDistance,
+    SwipeHold,
     ThumbwheelSensitivity,
     VerticalScrollSensitivity,
 );

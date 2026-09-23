@@ -5,6 +5,7 @@ use super::events::StateEvents;
 use super::{AppState, StateEvent};
 use crate::platform::app_icon::AppIconExt as _;
 use gpui_component::ThemeMode;
+use openlogi_core::binding::GestureTuning;
 use openlogi_core::config::{
     AppIcon, AppSettings, Appearance, AssetSourcePreference, DeviceViewMode, MouseProfileTarget,
     ThumbwheelSensitivity, UiScale, VerticalScrollSensitivity,
@@ -259,6 +260,33 @@ impl AppState {
             config.set_device_thumbwheel_sensitivity(key, override_value);
         });
         self.persist_and_reload("device thumbwheel sensitivity");
+        events
+    }
+
+    /// The effective gesture and long-press thresholds for `key`.
+    #[must_use]
+    pub fn device_gesture_tuning(&self, key: &str) -> GestureTuning {
+        self.config.gesture_tuning(key)
+    }
+
+    /// Set `key`'s gesture and long-press thresholds and persist them. Values
+    /// at their defaults are stored as "no override", so a device returned to
+    /// the defaults leaves `config.toml` clean. The agent picks the change up
+    /// through the reloaded capture plans; an unchanged value writes nothing
+    /// and is still reported.
+    pub fn commit_device_gesture_tuning(
+        &mut self,
+        key: &DeviceKey,
+        tuning: GestureTuning,
+    ) -> StateEvents {
+        let events = StateEvent::DeviceConfigChanged(key.clone()).into();
+        let key = key.as_str();
+        if self.config.gesture_tuning(key) == tuning {
+            return events;
+        }
+        self.config
+            .edit(|config| config.set_device_gesture_tuning(key, tuning));
+        self.persist_and_reload("device gesture tuning");
         events
     }
 

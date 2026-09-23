@@ -237,6 +237,15 @@ high_resolution_scrolling_description = "Wykrywa drobniejsze ruchy między skoka
 wheel_resolution_unsupported = "To urządzenie nie obsługuje sterowania rozdzielczością kółka."
 wheel_resolution_other_connection = "To urządzenie obsługuje rozdzielczość kółka przy innym rodzaju połączenia, ale nie przy tym."
 smartshift = "SmartShift"
+gestures_and_presses = "Gesty i przytrzymania"
+gesture_distance = "Długość gestu"
+gesture_distance_description = "Jak daleko przesunąć mysz z wciśniętym przyciskiem gestu, zanim gest się wykona."
+gesture_hold = "Przytrzymanie przed gestem"
+gesture_hold_description = "Jak długo trzymać przycisk gestu, zanim ruch zostanie uznany za gest, a nie kliknięcie."
+long_press_delay = "Długie naciśnięcie"
+long_press_delay_description = "Jak długo trzymać przycisk, zanim wykona się akcja długiego naciśnięcia."
+duration_ms = "%{value} ms"
+reset_gesture_defaults = "Przywróć domyślne"
 
 [actions]
 bind_control = "Przypisz %{name}"

@@ -237,6 +237,15 @@ high_resolution_scrolling_description = "偵測棘輪段落之間更細微的移
 wheel_resolution_unsupported = "此裝置不支援滾輪解析度控制。"
 wheel_resolution_other_connection = "此裝置使用另一種連線時支援滾輪解像度，但目前連線不支援。"
 smartshift = "SmartShift"
+gestures_and_presses = "Gestures & presses"
+gesture_distance = "Gesture distance"
+gesture_distance_description = "How far to move the mouse while holding a gesture button before the gesture fires."
+gesture_hold = "Hold before gesture"
+gesture_hold_description = "How long to hold a gesture button before movement counts as a gesture instead of a click."
+long_press_delay = "Long press"
+long_press_delay_description = "How long to hold a button before its long-press action fires."
+duration_ms = "%{value} ms"
+reset_gesture_defaults = "Reset to defaults"
 
 [actions]
 bind_control = "綁定 %{name}"

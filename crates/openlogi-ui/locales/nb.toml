@@ -237,6 +237,15 @@ high_resolution_scrolling_description = "Oppdager finere bevegelse mellom hakken
 wheel_resolution_unsupported = "Denne enheten støtter ikke styring av hjuloppløsning."
 wheel_resolution_other_connection = "Enheten støtter hjuloppløsning via den andre tilkoblingen, men ikke denne."
 smartshift = "SmartShift"
+gestures_and_presses = "Gestures & presses"
+gesture_distance = "Gesture distance"
+gesture_distance_description = "How far to move the mouse while holding a gesture button before the gesture fires."
+gesture_hold = "Hold before gesture"
+gesture_hold_description = "How long to hold a gesture button before movement counts as a gesture instead of a click."
+long_press_delay = "Long press"
+long_press_delay_description = "How long to hold a button before its long-press action fires."
+duration_ms = "%{value} ms"
+reset_gesture_defaults = "Reset to defaults"
 
 [actions]
 bind_control = "Tilordne %{name}"

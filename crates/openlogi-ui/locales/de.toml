@@ -237,6 +237,15 @@ high_resolution_scrolling_description = "Erkennt feinere Bewegungen zwischen den
 wheel_resolution_unsupported = "Dieses Gerät unterstützt keine Steuerung der Mausradauflösung."
 wheel_resolution_other_connection = "Dieses Gerät unterstützt die Mausradauflösung über seine andere Verbindung, aber nicht über diese."
 smartshift = "SmartShift"
+gestures_and_presses = "Gesten & Halten"
+gesture_distance = "Gestendistanz"
+gesture_distance_description = "Wie weit die Maus bei gedrückter Gestentaste bewegt werden muss, bevor die Geste ausgelöst wird."
+gesture_hold = "Halten vor Geste"
+gesture_hold_description = "Wie lange die Gestentaste gehalten werden muss, bevor Bewegung als Geste statt als Klick zählt."
+long_press_delay = "Langes Drücken"
+long_press_delay_description = "Wie lange eine Taste gehalten werden muss, bevor ihre Aktion für langes Drücken ausgelöst wird."
+duration_ms = "%{value} ms"
+reset_gesture_defaults = "Auf Standard zurücksetzen"
 
 [actions]
 bind_control = "%{name} zuweisen"

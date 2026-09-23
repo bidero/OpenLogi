@@ -237,6 +237,15 @@ high_resolution_scrolling_description = "Detecta movimientos más finos entre lo
 wheel_resolution_unsupported = "Este dispositivo no admite el control de resolución de la rueda."
 wheel_resolution_other_connection = "Este dispositivo admite la resolución de la rueda en su otra conexión, pero no en esta."
 smartshift = "SmartShift"
+gestures_and_presses = "Gestos y pulsaciones"
+gesture_distance = "Distancia del gesto"
+gesture_distance_description = "Cuánto mover el ratón con el botón de gestos pulsado antes de que se active el gesto."
+gesture_hold = "Mantener antes del gesto"
+gesture_hold_description = "Cuánto mantener el botón de gestos antes de que el movimiento cuente como gesto y no como clic."
+long_press_delay = "Pulsación larga"
+long_press_delay_description = "Cuánto mantener un botón antes de que se active su acción de pulsación larga."
+duration_ms = "%{value} ms"
+reset_gesture_defaults = "Restablecer valores predeterminados"
 
 [actions]
 bind_control = "Asignar %{name}"

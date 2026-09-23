@@ -16,7 +16,7 @@ use gpui_component::{
     v_flex,
 };
 use openlogi_core::config::ScrollResolution;
-use openlogi_core::device::DeviceKind;
+use openlogi_core::device::{Capabilities, DeviceKind};
 use openlogi_core::hid::DeviceRoute;
 
 use super::widgets::{back_button, kind_label, route_label, sidebar_action, status_badge};
@@ -31,6 +31,7 @@ use crate::features::lighting::standalone::LightPanel;
 use crate::features::lighting::visual as light_visual;
 use crate::features::mouse::view::MouseModelView;
 use crate::features::pointer::dpi::DpiPanel;
+use crate::features::pointer::gestures::GesturePanel;
 use crate::features::pointer::smartshift::SmartShiftPanel;
 use crate::features::profiles::{
     AppCatalogPicker, ProfileIconCache, action_ring_profile_scope_bar, button_profile_scope_bar,
@@ -94,6 +95,7 @@ pub(super) struct DetailPanels<'a> {
     pub keyboard_model: &'a gpui::Entity<FunctionRowView>,
     pub dpi_panel: &'a gpui::Entity<DpiPanel>,
     pub smartshift_panel: &'a gpui::Entity<SmartShiftPanel>,
+    pub gesture_panel: &'a gpui::Entity<GesturePanel>,
     pub lighting_panel: &'a gpui::Entity<LightingPanel>,
     pub camera_preview: &'a gpui::Entity<CameraPreview>,
     pub camera_controls: &'a gpui::Entity<CameraControlsPanel>,
@@ -123,9 +125,13 @@ pub(super) fn detail_content(
             action_ring_tab(panels.action_ring, profile_icons, app_catalog, cx).into_any_element()
         }
         DetailTab::Keys => keys_tab(panels.keyboard_model).into_any_element(),
-        DetailTab::Pointer => {
-            pointer_tab(panels.dpi_panel, panels.smartshift_panel, cx).into_any_element()
-        }
+        DetailTab::Pointer => pointer_tab(
+            panels.dpi_panel,
+            panels.smartshift_panel,
+            panels.gesture_panel,
+            cx,
+        )
+        .into_any_element(),
         DetailTab::Lighting => lighting_tab(panels.lighting_panel).into_any_element(),
         DetailTab::Camera => {
             camera_tab(panels.camera_preview, panels.camera_controls).into_any_element()
@@ -302,16 +308,26 @@ fn action_ring_tab(
         .child(tab_body(ContentWidth::Medium, panel.clone()))
 }
 
-/// Pointer tab: the DPI panel, the SmartShift wheel controls, and the
-/// scroll-wheel preferences, each in a titled card. Use a responsive two-column
+/// Pointer tab: the DPI panel, the SmartShift wheel controls, the
+/// scroll-wheel preferences and, for devices with remappable buttons, the
+/// gesture and long-press timing, each in a titled card. Use a responsive two-column
 /// grid that still fits the window's 720 px minimum width, so these short
 /// controls don't force a vertical scroll.
 fn pointer_tab(
     dpi_panel: &gpui::Entity<DpiPanel>,
     smartshift_panel: &gpui::Entity<SmartShiftPanel>,
+    gesture_panel: &gpui::Entity<GesturePanel>,
     cx: &mut Context<AppView>,
 ) -> impl IntoElement {
     let pal = theme::palette(cx);
+    let has_buttons = AppState::try_read(cx)
+        .and_then(AppState::current_record)
+        .is_some_and(|record| {
+            record
+                .capabilities
+                .unwrap_or_else(|| Capabilities::presumed_from_kind(record.kind))
+                .buttons
+        });
     tab_body(
         ContentWidth::Large,
         h_flex()
@@ -340,7 +356,17 @@ fn pointer_tab(
                     .min_w(POINTER_CARD_MIN_W)
                     .flex_1()
                     .child(scrolling_card(pal, cx)),
-            ),
+            )
+            .when(has_buttons, |grid| {
+                grid.child(pointer_grid_card(
+                    PanelCard::new(
+                        tr!("pointer.gestures_and_presses"),
+                        Icon::empty().path("action-icons/move.svg"),
+                        gesture_panel.clone().into_any_element(),
+                    )
+                    .fill(),
+                ))
+            }),
     )
 }
 

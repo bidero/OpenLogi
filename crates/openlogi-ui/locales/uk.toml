@@ -237,6 +237,15 @@ high_resolution_scrolling_description = "Розпізнає дрібніші р�
 wheel_resolution_unsupported = "Цей пристрій не підтримує керування роздільністю коліщатка."
 wheel_resolution_other_connection = "Пристрій підтримує налаштування роздільності коліщатка за іншого типу з'єднання, але не за поточного."
 smartshift = "SmartShift"
+gestures_and_presses = "Жести й утримання"
+gesture_distance = "Довжина жесту"
+gesture_distance_description = "Наскільки зсунути мишу з натиснутою кнопкою жестів, перш ніж спрацює жест."
+gesture_hold = "Утримання перед жестом"
+gesture_hold_description = "Скільки тримати кнопку жестів, перш ніж рух вважатиметься жестом, а не клацанням."
+long_press_delay = "Довге натискання"
+long_press_delay_description = "Скільки тримати кнопку, перш ніж спрацює дія довгого натискання."
+duration_ms = "%{value} мс"
+reset_gesture_defaults = "Скинути до типових"
 
 [actions]
 bind_control = "Прив'язати %{name}"

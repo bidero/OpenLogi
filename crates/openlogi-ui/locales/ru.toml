@@ -237,6 +237,15 @@ high_resolution_scrolling_description = "Обнаруживает более м�
 wheel_resolution_unsupported = "Это устройство не поддерживает управление разрешением колеса."
 wheel_resolution_other_connection = "Устройство поддерживает настройку разрешения колеса при другом типе подключения, но не при текущем."
 smartshift = "SmartShift"
+gestures_and_presses = "Жесты и удержание"
+gesture_distance = "Длина жеста"
+gesture_distance_description = "Насколько сдвинуть мышь с зажатой кнопкой жестов, прежде чем сработает жест."
+gesture_hold = "Удержание перед жестом"
+gesture_hold_description = "Сколько держать кнопку жестов, прежде чем движение будет считаться жестом, а не щелчком."
+long_press_delay = "Долгое нажатие"
+long_press_delay_description = "Сколько держать кнопку, прежде чем сработает действие долгого нажатия."
+duration_ms = "%{value} мс"
+reset_gesture_defaults = "Сбросить по умолчанию"
 
 [actions]
 bind_control = "Назначить %{name}"
