@@ -54,10 +54,7 @@ fn remove_legacy() {
 }
 
 fn plist_path(label: &str) -> io::Result<PathBuf> {
-    let home =
-        openlogi_core::paths::home_dir().map_err(|e| io::Error::new(io::ErrorKind::NotFound, e))?;
-    Ok(home
-        .join("Library")
-        .join("LaunchAgents")
-        .join(format!("{label}.plist")))
+    let dir = openlogi_core::paths::user_launch_agents_dir()
+        .map_err(|e| io::Error::new(io::ErrorKind::NotFound, e))?;
+    Ok(dir.join(format!("{label}.plist")))
 }

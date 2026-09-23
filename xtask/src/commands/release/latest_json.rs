@@ -12,7 +12,7 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use openlogi_core::brand::APP_ID;
 
 const CHANNEL: &str = "stable";
-const MACOS_MINIMUM_OS_VERSION: &str = "13.0";
+const MACOS_MINIMUM_OS_VERSION: &str = "11.0";
 /// Windows 10+. Informational — the client updater doesn't gate on it today,
 /// and everything that can run OpenLogi reports at least 10.0.
 const WINDOWS_MINIMUM_OS_VERSION: &str = "10.0";

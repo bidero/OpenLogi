@@ -172,7 +172,7 @@ Rules:
 
 ## Availability: the bindings do not know the deployment floor
 
-The bundles declare macOS 13.0 (`MACOSX_DEPLOYMENT_TARGET` in the release
+The bundles declare macOS 11.0 (`MACOSX_DEPLOYMENT_TARGET` in the release
 workflows, `LSMinimumSystemVersion` in the `Info.plist` templates under
 `crates/openlogi-desktop/bundle/`), but `objc2` generates every symbol a header
 declares regardless of its `API_AVAILABLE(macos(N))`, and Rust has no
@@ -180,8 +180,11 @@ declares regardless of its `API_AVAILABLE(macos(N))`, and Rust has no
 when called on an older macOS; an extern *static* — `SMAppServiceErrorDomain`
 is `macos(15.0)` while the rest of `SMAppService` is 13.0 — is bound by dyld
 at load, so the whole binary is refused before `main` (#1279; 0.8.2 and 0.8.3
-would not launch on 13 or 14). CI never runs on the floor release, so nothing
-catches it after the fact.
+would not launch on 13 or 14). The same happened with IOKit's `kIOMainPortDefault` (`macos(12.0)`) on
+macOS 11: pass its documented value, `MACH_PORT_NULL`, instead. `SMAppService`
+itself is 13.0, so the GUI's agent registration checks the OS version and
+falls back to a `launchctl` LaunchAgent below it. CI never runs on the floor
+release, so nothing catches it after the fact.
 
 Before using a generated symbol, read its `API_AVAILABLE` in the SDK header
 (`xcrun --show-sdk-path`). If it is newer than the floor: for a string

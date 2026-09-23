@@ -83,7 +83,7 @@ OpenLogi 能做、而 Options+ 做不到的事：
 
 ### macOS
 
-需要 macOS 13 或更高版本。
+需要 macOS 11 或更高版本。
 
 从[最新 release](https://github.com/AprilNEA/OpenLogi/releases/latest) 下载已签名、已公证的 `.dmg`，把 `OpenLogi.app` 拖入 `/Applications`。
 

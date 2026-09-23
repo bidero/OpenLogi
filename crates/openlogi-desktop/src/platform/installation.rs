@@ -13,6 +13,8 @@ use gpui::{App, Global};
 mod linux;
 #[cfg(any(target_os = "macos", all(test, unix)))]
 mod macos;
+#[cfg(target_os = "macos")]
+pub(crate) use macos::app_bundle;
 #[cfg(any(target_os = "windows", test))]
 mod windows;
 

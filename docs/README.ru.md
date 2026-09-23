@@ -88,7 +88,7 @@
 
 ### macOS
 
-Нужен macOS 13 или новее.
+Нужен macOS 11 или новее.
 
 Скачайте подписанный и нотаризованный `.dmg` из [последнего релиза](https://github.com/AprilNEA/OpenLogi/releases/latest) и перетащите `OpenLogi.app` в `/Applications`.
 

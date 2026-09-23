@@ -1,5 +1,7 @@
-//! The macOS implementation: `SMAppService` over `objc2-service-management`,
-//! plus the version marker that drives re-registration after an app update.
+//! The macOS implementation: `SMAppService` over `objc2-service-management`
+//! on macOS 13+, a user LaunchAgent plist loaded with `launchctl` on 11 and
+//! 12 (where `SMAppService` does not exist), plus the version marker that
+//! drives re-registration after an app update.
 
 use super::ServiceStatus;
 
@@ -95,15 +97,224 @@ fn record_registered_version() {
     reason = "plain no-argument ObjC class method via objc2 bindings"
 )]
 pub(super) fn open_login_items_settings() {
+    if !has_sm_app_service() {
+        // No Login Items pane for launchd jobs before macOS 13.
+        return;
+    }
     // SAFETY: plain ObjC class method with no arguments.
     unsafe {
         objc2_service_management::SMAppService::openSystemSettingsLoginItems();
     }
 }
 
+/// Whether this macOS has `SMAppService` (13.0+). Below it the framework
+/// class is absent and every call must go through [`legacy`].
+fn has_sm_app_service() -> bool {
+    use objc2_foundation::{NSOperatingSystemVersion, NSProcessInfo};
+    NSProcessInfo::processInfo().isOperatingSystemAtLeastVersion(NSOperatingSystemVersion {
+        majorVersion: 13,
+        minorVersion: 0,
+        patchVersion: 0,
+    })
+}
+
+/// Picks the registration mechanism this macOS supports.
+mod backend {
+    use super::{ServiceStatus, has_sm_app_service, legacy, sm};
+
+    pub(super) fn status() -> ServiceStatus {
+        if has_sm_app_service() {
+            sm::status()
+        } else {
+            legacy::status()
+        }
+    }
+
+    pub(super) fn register() -> Result<(), String> {
+        if has_sm_app_service() {
+            sm::register()
+        } else {
+            legacy::register()
+        }
+    }
+
+    pub(super) fn unregister() -> Result<(), String> {
+        if has_sm_app_service() {
+            sm::unregister()
+        } else {
+            legacy::unregister()
+        }
+    }
+}
+
+/// macOS 11 and 12: a per-user LaunchAgent at
+/// `~/Library/LaunchAgents/<label>.plist`, loaded with `launchctl bootstrap`.
+///
+/// The plist is derived from the one embedded in the app bundle (the single
+/// source for label and supervision keys): its bundle-relative
+/// `BundleProgram`, which only `SMAppService` understands, becomes an
+/// absolute `Program`. A moved app is picked up by the version-marker
+/// re-registration on the next launch of a new build, or by toggling the
+/// registration off and on.
+mod legacy {
+    use std::path::{Path, PathBuf};
+    use std::process::Command;
+
+    use super::{ServiceStatus, agent_service_label, current_uid};
+
+    /// The `.app` root of the running GUI.
+    fn app_bundle() -> Option<PathBuf> {
+        let exe = std::env::current_exe().ok()?;
+        crate::platform::installation::app_bundle(&exe).map(Path::to_path_buf)
+    }
+
+    fn embedded_plist(bundle: &Path) -> PathBuf {
+        bundle
+            .join(openlogi_core::brand::LAUNCH_AGENTS_DIR)
+            .join(format!("{}.plist", agent_service_label()))
+    }
+
+    fn user_plist() -> Result<PathBuf, String> {
+        let dir = openlogi_core::paths::user_launch_agents_dir().map_err(|e| e.to_string())?;
+        Ok(dir.join(format!("{}.plist", agent_service_label())))
+    }
+
+    fn domain() -> Result<String, String> {
+        current_uid()
+            .map(|uid| format!("gui/{uid}"))
+            .ok_or_else(|| "could not determine the current user id".to_owned())
+    }
+
+    fn escape_xml(text: &str) -> String {
+        text.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+    }
+
+    /// Rewrite the embedded plist's `BundleProgram` into an absolute
+    /// `Program` under `bundle`.
+    fn rewrite_program(embedded: &str, bundle: &Path) -> Result<String, String> {
+        const KEY: &str = "<key>BundleProgram</key>";
+        let key_at = embedded
+            .find(KEY)
+            .ok_or("the embedded agent plist has no BundleProgram")?;
+        let after_key = key_at + KEY.len();
+        let open = embedded[after_key..]
+            .find("<string>")
+            .map(|i| after_key + i + "<string>".len())
+            .ok_or("malformed BundleProgram in the embedded agent plist")?;
+        let close = embedded[open..]
+            .find("</string>")
+            .map(|i| open + i)
+            .ok_or("malformed BundleProgram in the embedded agent plist")?;
+        let program = bundle.join(&embedded[open..close]);
+        let program = program
+            .to_str()
+            .ok_or("the app bundle path is not valid UTF-8")?;
+        Ok(format!(
+            "{}<key>Program</key>{}{}{}",
+            &embedded[..key_at],
+            &embedded[after_key..open],
+            escape_xml(program),
+            &embedded[close..]
+        ))
+    }
+
+    pub(super) fn status() -> ServiceStatus {
+        match app_bundle() {
+            Some(bundle) if embedded_plist(&bundle).is_file() => {}
+            _ => return ServiceStatus::NotFound,
+        }
+        match user_plist() {
+            Ok(path) if path.is_file() => ServiceStatus::Enabled,
+            _ => ServiceStatus::NotRegistered,
+        }
+    }
+
+    fn is_loaded(domain: &str) -> bool {
+        Command::new("/bin/launchctl")
+            .arg("print")
+            .arg(format!("{domain}/{}", agent_service_label()))
+            .output()
+            .is_ok_and(|out| out.status.success())
+    }
+
+    /// Write the user plist and load it; an already-loaded job is success.
+    pub(super) fn register() -> Result<(), String> {
+        let bundle = app_bundle().ok_or("OpenLogi is not running from an app bundle")?;
+        let embedded = std::fs::read_to_string(embedded_plist(&bundle))
+            .map_err(|e| format!("could not read the embedded agent plist: {e}"))?;
+        let content = rewrite_program(&embedded, &bundle)?;
+        let path = user_plist()?;
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(&path, content)
+            .map_err(|e| format!("could not write {}: {e}", path.display()))?;
+        let domain = domain()?;
+        let out = Command::new("/bin/launchctl")
+            .arg("bootstrap")
+            .arg(&domain)
+            .arg(&path)
+            .output()
+            .map_err(|e| format!("could not run launchctl: {e}"))?;
+        if out.status.success() || is_loaded(&domain) {
+            Ok(())
+        } else {
+            Err(format!(
+                "launchctl bootstrap failed ({}): {}",
+                out.status,
+                String::from_utf8_lossy(&out.stderr).trim()
+            ))
+        }
+    }
+
+    /// Unload the job and remove the user plist; an absent job is success.
+    pub(super) fn unregister() -> Result<(), String> {
+        let domain = domain()?;
+        // Fails when nothing is loaded, which is the state we want anyway.
+        let _ = Command::new("/bin/launchctl")
+            .arg("bootout")
+            .arg(format!("{domain}/{}", agent_service_label()))
+            .output();
+        let path = user_plist()?;
+        match std::fs::remove_file(&path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(format!("could not remove {}: {e}", path.display())),
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::rewrite_program;
+
+        #[test]
+        fn bundle_program_becomes_an_absolute_program() {
+            let embedded = "<dict>\n\t<key>BundleProgram</key>\n\t<string>Contents/MacOS/agent</string>\n\t<key>Label</key>\n</dict>";
+            let rewritten =
+                rewrite_program(embedded, std::path::Path::new("/Apps/A&B.app")).unwrap();
+            assert_eq!(
+                rewritten,
+                "<dict>\n\t<key>Program</key>\n\t<string>/Apps/A&amp;B.app/Contents/MacOS/agent</string>\n\t<key>Label</key>\n</dict>"
+            );
+        }
+    }
+}
+
+/// The current user's uid, read from the home directory's owner: `launchctl`
+/// addresses the per-user launchd domain as `gui/<uid>`, and std exposes no
+/// direct getuid.
+pub fn current_uid() -> Option<u32> {
+    use std::os::unix::fs::MetadataExt as _;
+
+    let home = openlogi_core::paths::home_dir().ok()?;
+    std::fs::metadata(home).ok().map(|meta| meta.uid())
+}
+
 /// The raw `SMAppService` calls, one place per operation, with the benign
 /// already-converged error code forgiven where it means success.
-mod backend {
+mod sm {
     use objc2::rc::Retained;
     use objc2_foundation::{NSError, NSString};
     use objc2_service_management::SMAppService;

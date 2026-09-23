@@ -14,7 +14,7 @@
        come from cargo-bundle / xtask stamping). -->
   <key>CFBundleShortVersionString</key><string>0.0.0</string>
   <key>CFBundleVersion</key><string>0.0.0</string>
-  <key>LSMinimumSystemVersion</key><string>13.0</string>
+  <key>LSMinimumSystemVersion</key><string>11.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSCameraUsageDescription</key><string>OpenLogi previews your Logitech webcam locally. Video never leaves your Mac.</string>
   <!-- openlogi:// deep-link scheme. Mirror of [package.metadata.bundle]

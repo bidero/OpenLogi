@@ -10,7 +10,9 @@
 //! ([`ServiceStatus::RequiresApproval`]) is never re-registered; the
 //! settings window surfaces it instead. `macos` owns every `SMAppService`
 //! call; `unsupported` reports `ServiceStatus::Unsupported` (a variant that
-//! exists only off macOS) elsewhere.
+//! exists only off macOS) elsewhere. `SMAppService` exists from macOS 13;
+//! on 11 and 12 `macos` registers the same embedded plist as a user
+//! LaunchAgent through `launchctl` instead.
 
 #[cfg(target_os = "macos")]
 mod macos;
@@ -23,7 +25,7 @@ use macos as platform;
 use unsupported as platform;
 
 #[cfg(target_os = "macos")]
-pub use macos::agent_service_label;
+pub use macos::{agent_service_label, current_uid};
 
 /// Where the agent service stands with launchd, mirroring
 /// `SMAppServiceStatus` plus a "not this platform" arm.

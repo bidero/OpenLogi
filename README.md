@@ -88,7 +88,7 @@ Things OpenLogi does that Options+ won't:
 
 ### macOS
 
-Requires macOS 13 or later.
+Requires macOS 11 or later.
 
 Download the signed, notarized `.dmg` from the [latest release](https://github.com/AprilNEA/OpenLogi/releases/latest) and drag `OpenLogi.app` to `/Applications`.
 

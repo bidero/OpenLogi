@@ -174,6 +174,15 @@ pub fn home_dir() -> Result<PathBuf, PathsError> {
     Ok(xdg()?.home_dir().to_path_buf())
 }
 
+/// The current user's launchd agent directory, macOS `~/Library/LaunchAgents`.
+///
+/// Where per-user LaunchAgent plists live: the agent's legacy plists that
+/// migration removes, and the GUI's registration on macOS 11 and 12, which
+/// predate `SMAppService`.
+pub fn user_launch_agents_dir() -> Result<PathBuf, PathsError> {
+    Ok(home_dir()?.join("Library").join("LaunchAgents"))
+}
+
 /// The raw XDG config home directory (without the `openlogi` subdirectory).
 ///
 /// Honours an absolute `$XDG_CONFIG_HOME`; falls back to `~/.config`.

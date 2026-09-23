@@ -45,7 +45,8 @@ fn detect_in(executable: &Path, prefixes: &[PathBuf]) -> InstallationSource {
     )
 }
 
-fn app_bundle(executable: &Path) -> Option<&Path> {
+/// The `.app` bundle whose `Contents/MacOS` holds `executable`, if any.
+pub(crate) fn app_bundle(executable: &Path) -> Option<&Path> {
     let macos = executable.parent()?;
     let contents = macos.parent()?;
     let bundle = contents.parent()?;

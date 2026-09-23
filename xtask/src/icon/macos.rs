@@ -48,7 +48,7 @@ const CATALOG: &str = "Assets.car";
 
 /// Deployment target handed to `actool`; mirrors `osx_minimum_system_version`
 /// in `openlogi-desktop/Cargo.toml`.
-const MINIMUM_MACOS: &str = "13.0";
+const MINIMUM_MACOS: &str = "11.0";
 
 impl IconPipeline for AppBundle {
     fn compile(&self) -> Result<()> {

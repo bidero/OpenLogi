@@ -72,7 +72,7 @@ pub(crate) fn run(args: &Args) -> Result<()> {
     // outer window dimensions, so add the 32pt Finder title bar and keep icon
     // coordinates relative to the 760×480 content area.
     // ULMO (LZMA) compresses ~20% smaller than the default UDZO (zlib) and
-    // mounts on macOS 10.15+, well under the bundle's 13.0 floor.
+    // mounts on macOS 10.15+, well under the bundle's 11.0 floor.
     cmd!(
         sh,
         "create-dmg --format ULMO --volname OpenLogi --background {background} --window-pos 240 120 --window-size 760 512 --icon-size 128 --icon OpenLogi.app 212 250 --app-drop-link 548 250 --hide-extension OpenLogi.app {output} {app}"

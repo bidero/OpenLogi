@@ -123,7 +123,7 @@ fn kickstart_registered_agent() -> bool {
     if registration::status() != registration::ServiceStatus::Enabled {
         return false;
     }
-    let Some(uid) = current_uid() else {
+    let Some(uid) = registration::current_uid() else {
         return false;
     };
     let target = format!("gui/{uid}/{}", registration::agent_service_label());
@@ -150,17 +150,6 @@ fn kickstart_registered_agent() -> bool {
             false
         }
     }
-}
-
-/// The current user's uid, read from the home directory's owner: `launchctl`
-/// addresses the per-user launchd domain as `gui/<uid>`, and std exposes no
-/// direct getuid.
-#[cfg(target_os = "macos")]
-fn current_uid() -> Option<u32> {
-    use std::os::unix::fs::MetadataExt as _;
-
-    let home = openlogi_core::paths::home_dir().ok()?;
-    std::fs::metadata(home).ok().map(|meta| meta.uid())
 }
 
 /// Resolve the agent executable relative to the running GUI: a sibling in the
