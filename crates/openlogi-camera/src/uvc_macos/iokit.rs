@@ -27,11 +27,16 @@ use objc2_io_kit::{
     IOCFPlugInInterface, IOCreatePlugInInterfaceForService, IODestroyPlugInInterface,
     IOIteratorNext, IOObjectRelease, IORegistryEntryCreateCFProperty, IOServiceGetMatchingServices,
     IOServiceMatching, IOUSBConfigurationDescriptor, IOUSBConfigurationDescriptorPtr,
-    IOUSBDevRequest, IOUSBDeviceInterface182, io_iterator_t, io_object_t, kIOMainPortDefault,
+    IOUSBDevRequest, IOUSBDeviceInterface182, io_iterator_t, io_object_t,
 };
 
 /// `kIOReturnSuccess`, which shares its value with `KERN_SUCCESS` and `S_OK`.
 const SUCCESS: i32 = 0;
+
+/// IOKit's default main port, `MACH_PORT_NULL`. Spelled out because the
+/// `kIOMainPortDefault` symbol exists only from macOS 12, and importing it
+/// makes dyld refuse the whole binary on macOS 11.
+const IO_MAIN_PORT_DEFAULT: u32 = 0;
 
 /// A reference to an IOKit object this process owns, released on drop.
 ///
@@ -85,10 +90,10 @@ pub(super) fn usb_devices() -> Result<IoServices, &'static str> {
     // spells by taking it *by value* — so handing it over is its last use.
     let matching = CFRetained::<CFDictionary>::from(&*matching);
     let mut iterator: io_iterator_t = 0;
-    // SAFETY: `kIOMainPortDefault` is IOKit's own static, and `iterator` is a
-    // live local the call fills in on success.
+    // SAFETY: the main port is `MACH_PORT_NULL`, and `iterator` is a live
+    // local the call fills in on success.
     let rc = unsafe {
-        IOServiceGetMatchingServices(kIOMainPortDefault, Some(matching), &raw mut iterator)
+        IOServiceGetMatchingServices(IO_MAIN_PORT_DEFAULT, Some(matching), &raw mut iterator)
     };
     if rc != SUCCESS {
         return Err("IOServiceGetMatchingServices");
