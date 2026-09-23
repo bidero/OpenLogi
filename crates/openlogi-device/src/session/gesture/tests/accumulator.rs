@@ -673,3 +673,70 @@ fn a_dpi_button_re_presses_after_a_release() {
         "press → release → press emits exactly three lifecycle edges"
     );
 }
+
+#[test]
+fn the_device_tuning_decides_when_a_swipe_commits() {
+    // A longer configured distance keeps an 80-unit swipe uncommitted (a
+    // click on release), while the default commits the same travel.
+    let long = openlogi_core::binding::GestureTuning {
+        swipe_distance: openlogi_core::binding::SwipeDistance::from_rounded(120.0),
+        ..Default::default()
+    };
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let mut acc = CaptureAccum::new(long);
+    handle_reprog(&mut acc, press(), GESTURE, &[], &[], &tx);
+    acc.backdate_hold_for_test();
+    handle_reprog(
+        &mut acc,
+        RawControlEvent::RawXy { dx: 80, dy: 0 },
+        GESTURE,
+        &[],
+        &[],
+        &tx,
+    );
+    handle_reprog(&mut acc, release(), GESTURE, &[], &[], &tx);
+    assert_eq!(
+        next_gesture(&mut rx),
+        Ok(CapturedInput::Gesture(
+            ButtonId::GestureButton,
+            GestureDirection::Click
+        ))
+    );
+
+    // A re-arm keeps the device's tuning.
+    acc.reset();
+    handle_reprog(&mut acc, press(), GESTURE, &[], &[], &tx);
+    acc.backdate_hold_for_test();
+    handle_reprog(
+        &mut acc,
+        RawControlEvent::RawXy { dx: 80, dy: 0 },
+        GESTURE,
+        &[],
+        &[],
+        &tx,
+    );
+    assert!(
+        next_gesture(&mut rx).is_err(),
+        "still below the tuned distance"
+    );
+
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let mut acc = CaptureAccum::default();
+    handle_reprog(&mut acc, press(), GESTURE, &[], &[], &tx);
+    acc.backdate_hold_for_test();
+    handle_reprog(
+        &mut acc,
+        RawControlEvent::RawXy { dx: 80, dy: 0 },
+        GESTURE,
+        &[],
+        &[],
+        &tx,
+    );
+    assert_eq!(
+        next_gesture(&mut rx),
+        Ok(CapturedInput::Gesture(
+            ButtonId::GestureButton,
+            GestureDirection::Right
+        ))
+    );
+}

@@ -10,7 +10,10 @@ use super::settings::{
     CameraControls, GestureOwner, LightSettings, Lighting, ScrollResolution, SmartShift,
     ThumbwheelSensitivity, deserialize_gesture_owner,
 };
-use crate::binding::{Action, ActionRingConfig, Binding, ButtonId, GestureDirection};
+use crate::binding::{
+    Action, ActionRingConfig, Binding, ButtonId, GestureDirection, LongPressDelay, SwipeDistance,
+    SwipeHold,
+};
 use crate::device::{Capabilities, DeviceKind, DeviceModelInfo, LightCapabilities};
 use crate::hid::Dpi;
 
@@ -246,6 +249,18 @@ pub struct DeviceConfig {
     /// [`AppSettings::thumbwheel_sensitivity`](crate::config::AppSettings::thumbwheel_sensitivity).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thumbwheel_sensitivity: Option<ThumbwheelSensitivity>,
+    /// Per-device swipe distance override. `None` uses
+    /// [`SwipeDistance::DEFAULT`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gesture_swipe_distance: Option<SwipeDistance>,
+    /// Per-device hold-before-swipe override (ms). `None` uses
+    /// [`SwipeHold::DEFAULT`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gesture_swipe_hold_ms: Option<SwipeHold>,
+    /// Per-device long-press delay override (ms). `None` uses
+    /// [`LongPressDelay::DEFAULT`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub long_press_ms: Option<LongPressDelay>,
     /// Invert this device's scroll-wheel direction relative to the OS setting
     /// (issue #126): on, a wheel tick scrolls the opposite way, so a user who
     /// keeps macOS "natural scrolling" for the trackpad can have a traditional
@@ -366,6 +381,9 @@ impl Default for DeviceConfig {
             camera_profiles: BTreeMap::new(),
             camera_profile: None,
             thumbwheel_sensitivity: None,
+            gesture_swipe_distance: None,
+            gesture_swipe_hold_ms: None,
+            long_press_ms: None,
             invert_scroll: false,
             scroll_resolution: None,
             host_switch_targets: Vec::new(),
@@ -483,6 +501,12 @@ struct RawDeviceConfig {
     #[serde(default)]
     thumbwheel_sensitivity: Option<ThumbwheelSensitivity>,
     #[serde(default)]
+    gesture_swipe_distance: Option<SwipeDistance>,
+    #[serde(default)]
+    gesture_swipe_hold_ms: Option<SwipeHold>,
+    #[serde(default)]
+    long_press_ms: Option<LongPressDelay>,
+    #[serde(default)]
     invert_scroll: bool,
     #[serde(default)]
     scroll_resolution: Option<ScrollResolution>,
@@ -546,6 +570,9 @@ impl From<RawDeviceConfig> for DeviceConfig {
             camera_profiles: raw.camera_profiles,
             camera_profile: raw.camera_profile,
             thumbwheel_sensitivity: raw.thumbwheel_sensitivity,
+            gesture_swipe_distance: raw.gesture_swipe_distance,
+            gesture_swipe_hold_ms: raw.gesture_swipe_hold_ms,
+            long_press_ms: raw.long_press_ms,
             invert_scroll: raw.invert_scroll,
             scroll_resolution: raw.scroll_resolution,
             host_switch_targets: raw.host_switch_targets,

@@ -2,7 +2,7 @@
 
 use std::time::Instant;
 
-use openlogi_core::binding::LongPressBinding;
+use openlogi_core::binding::{LongPressBinding, LongPressDelay};
 
 use super::*;
 
@@ -160,7 +160,7 @@ fn hook_actions_retain_the_press_time_target_across_focus_changes() {
     let input = owner.input();
     let target = ActionDispatchTarget::SafariProcess(417);
     let token = input
-        .try_hook_down_with_target(ButtonId::Back, None, target)
+        .try_hook_down_with_target(ButtonId::Back, None, LongPressDelay::DEFAULT, target)
         .expect("Safari down should be queued");
     let ButtonRuntimeEvent::Started(started) = recv_event(&received) else {
         panic!("down should start the press lifecycle");
@@ -168,7 +168,12 @@ fn hook_actions_retain_the_press_time_target_across_focus_changes() {
     assert_eq!(started.target(), target);
 
     input
-        .try_hook_down_with_target(ButtonId::Forward, None, ActionDispatchTarget::Keyboard)
+        .try_hook_down_with_target(
+            ButtonId::Forward,
+            None,
+            LongPressDelay::DEFAULT,
+            ActionDispatchTarget::Keyboard,
+        )
         .expect("post-focus-change down should be queued");
     assert!(matches!(
         recv_event(&received),
@@ -200,7 +205,13 @@ fn hidpp_edges_and_pulses_retain_their_press_time_targets() {
     let safari = ActionDispatchTarget::SafariProcess(417);
 
     input
-        .try_hidpp_down(&session, ButtonId::Back, None, safari)
+        .try_hidpp_down(
+            &session,
+            ButtonId::Back,
+            None,
+            LongPressDelay::DEFAULT,
+            safari,
+        )
         .expect("HID++ down should be queued");
     let ButtonRuntimeEvent::Started(started) = recv_event(&received) else {
         panic!("HID++ down should start a lifecycle");
@@ -216,6 +227,7 @@ fn hidpp_edges_and_pulses_retain_their_press_time_targets() {
         &session,
         ButtonId::Forward,
         None,
+        LongPressDelay::DEFAULT,
         ActionDispatchTarget::Keyboard,
     ));
     let ButtonRuntimeEvent::Started(started) = recv_event(&received) else {
@@ -242,12 +254,18 @@ fn pointer_change_cancels_old_target_but_preserves_keyboard_and_new_target() {
     };
     let current = PointerTarget::Desktop;
     let old_press = input
-        .try_hook_down_with_target(ButtonId::Back, None, ActionDispatchTarget::Pointer(old))
+        .try_hook_down_with_target(
+            ButtonId::Back,
+            None,
+            LongPressDelay::DEFAULT,
+            ActionDispatchTarget::Pointer(old),
+        )
         .expect("old down");
     let new_press = input
         .try_hook_down_with_target(
             ButtonId::Forward,
             None,
+            LongPressDelay::DEFAULT,
             ActionDispatchTarget::Pointer(current),
         )
         .expect("new down");
@@ -294,6 +312,7 @@ fn source_cancellation_invalidates_queued_gesture_work() {
             &session,
             ButtonId::Back,
             None,
+            LongPressDelay::DEFAULT,
             ActionDispatchTarget::Keyboard,
         )
         .expect("down should be queued");
@@ -421,6 +440,7 @@ fn pulse_has_an_immediate_balanced_lifecycle() {
         &session,
         ButtonId::Back,
         Some(&binding),
+        LongPressDelay::DEFAULT,
         ActionDispatchTarget::Keyboard,
     ));
 
@@ -442,7 +462,7 @@ fn release_before_long_press_threshold_fires_only_the_short_action() {
     let pressed_at = Instant::now();
     let press = ActivePress {
         token: PressToken::hook_for_test(1, ButtonId::Back),
-        behavior: PressBehavior::new(Some(&binding), pressed_at),
+        behavior: PressBehavior::new(Some(&binding), LongPressDelay::DEFAULT, pressed_at),
         target: ActionDispatchTarget::Keyboard,
     };
     state.press(press.clone());
@@ -452,7 +472,10 @@ fn release_before_long_press_threshold_fires_only_the_short_action() {
         &mut state,
         ButtonInput::Up {
             key: press.token.key.clone(),
-            released_at: pressed_at + LONG_PRESS_THRESHOLD.saturating_sub(Duration::from_millis(1)),
+            released_at: pressed_at
+                + LongPressDelay::DEFAULT
+                    .duration()
+                    .saturating_sub(Duration::from_millis(1)),
         },
         &mut |event| events.push(event),
     );
@@ -481,7 +504,7 @@ fn threshold_fires_long_once_and_suppresses_short_on_release() {
     let pressed_at = Instant::now();
     let press = ActivePress {
         token: PressToken::hook_for_test(1, ButtonId::Back),
-        behavior: PressBehavior::new(Some(&binding), pressed_at),
+        behavior: PressBehavior::new(Some(&binding), LongPressDelay::DEFAULT, pressed_at),
         target: ActionDispatchTarget::Keyboard,
     };
     state.press(press.clone());
@@ -489,19 +512,19 @@ fn threshold_fires_long_once_and_suppresses_short_on_release() {
 
     emit_due_long_presses(
         &mut state,
-        pressed_at + LONG_PRESS_THRESHOLD,
+        pressed_at + LongPressDelay::DEFAULT.duration(),
         &mut |event| events.push(event),
     );
     emit_due_long_presses(
         &mut state,
-        pressed_at + LONG_PRESS_THRESHOLD + Duration::from_secs(1),
+        pressed_at + LongPressDelay::DEFAULT.duration() + Duration::from_secs(1),
         &mut |event| events.push(event),
     );
     process_input(
         &mut state,
         ButtonInput::Up {
             key: press.token.key.clone(),
-            released_at: pressed_at + LONG_PRESS_THRESHOLD + Duration::from_secs(1),
+            released_at: pressed_at + LongPressDelay::DEFAULT.duration() + Duration::from_secs(1),
         },
         &mut |event| events.push(event),
     );
@@ -530,7 +553,7 @@ fn cancellation_never_fires_a_pending_short_or_long_action() {
     let pressed_at = Instant::now();
     let press = ActivePress {
         token: PressToken::hook_for_test(1, ButtonId::Back),
-        behavior: PressBehavior::new(Some(&binding), pressed_at),
+        behavior: PressBehavior::new(Some(&binding), LongPressDelay::DEFAULT, pressed_at),
         target: ActionDispatchTarget::Keyboard,
     };
     state.press(press);
@@ -543,7 +566,7 @@ fn cancellation_never_fires_a_pending_short_or_long_action() {
     );
     emit_due_long_presses(
         &mut state,
-        pressed_at + LONG_PRESS_THRESHOLD,
+        pressed_at + LongPressDelay::DEFAULT.duration(),
         &mut |event| events.push(event),
     );
 
@@ -573,6 +596,7 @@ fn pulse_degrades_long_press_to_its_short_action() {
         &session,
         ButtonId::Back,
         Some(&binding),
+        LongPressDelay::DEFAULT,
         ActionDispatchTarget::Keyboard,
     ));
     assert!(matches!(
@@ -639,12 +663,12 @@ fn overdue_long_press_precedes_unrelated_queued_actions() {
     let (commands, queued) = mpsc::sync_channel(EVENT_QUEUE_CAPACITY);
     let binding = long_press(Action::Copy, Action::Paste);
     let pressed_at = Instant::now()
-        .checked_sub(LONG_PRESS_THRESHOLD)
+        .checked_sub(LongPressDelay::DEFAULT.duration())
         .expect("test process should have run beyond the long-press threshold");
     let mut state = ButtonState::default();
     let press = ActivePress {
         token: PressToken::hook_for_test(1, ButtonId::Back),
-        behavior: PressBehavior::new(Some(&binding), pressed_at),
+        behavior: PressBehavior::new(Some(&binding), LongPressDelay::DEFAULT, pressed_at),
         target: ActionDispatchTarget::Keyboard,
     };
     state.press(press.clone());
@@ -706,7 +730,7 @@ fn continuous_commands_cannot_starve_a_long_press_deadline() {
             generation: 0,
             input: ButtonInput::Down(ActivePress {
                 token: PressToken::hook_for_test(1, ButtonId::Back),
-                behavior: PressBehavior::new(Some(&binding), pressed_at),
+                behavior: PressBehavior::new(Some(&binding), LongPressDelay::DEFAULT, pressed_at),
                 target: ActionDispatchTarget::Keyboard,
             }),
         })
@@ -737,7 +761,7 @@ fn continuous_commands_cannot_starve_a_long_press_deadline() {
         });
     });
 
-    let wait_until = pressed_at + LONG_PRESS_THRESHOLD + Duration::from_millis(250);
+    let wait_until = pressed_at + LongPressDelay::DEFAULT.duration() + Duration::from_millis(250);
     let triggered_after = loop {
         let Some(remaining) = wait_until.checked_duration_since(Instant::now()) else {
             break None;
@@ -763,7 +787,7 @@ fn continuous_commands_cannot_starve_a_long_press_deadline() {
     worker.join().expect("worker should stop");
 
     let triggered_after = triggered_after.expect("continuous input starved the long-press timer");
-    assert!(triggered_after <= LONG_PRESS_THRESHOLD + Duration::from_millis(250));
+    assert!(triggered_after <= LongPressDelay::DEFAULT.duration() + Duration::from_millis(250));
 }
 
 #[test]
@@ -792,7 +816,7 @@ fn invalidation_during_a_blocked_handler_wins_over_an_overdue_long_action() {
         ButtonRuntimeEvent::Started(_)
     ));
     input.invalidate_all();
-    thread::sleep(LONG_PRESS_THRESHOLD + Duration::from_millis(20));
+    thread::sleep(LongPressDelay::DEFAULT.duration() + Duration::from_millis(20));
     resume.send(()).expect("worker should still be blocked");
 
     assert!(matches!(
@@ -832,7 +856,7 @@ fn a_release_observed_before_the_threshold_wins_despite_worker_backlog() {
         ButtonRuntimeEvent::Started(_)
     ));
     assert!(input.try_hook_up(ButtonId::Back));
-    thread::sleep(LONG_PRESS_THRESHOLD + Duration::from_millis(20));
+    thread::sleep(LongPressDelay::DEFAULT.duration() + Duration::from_millis(20));
     resume.send(()).expect("worker should still be blocked");
 
     assert!(matches!(

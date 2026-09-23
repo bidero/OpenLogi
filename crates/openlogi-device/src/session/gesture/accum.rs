@@ -1,7 +1,7 @@
 //! Sans-I/O accumulator for diverted `0x1b04` reports: which armed source
 //! holds the raw-XY stream, and the button edges and gestures that follow.
 
-use openlogi_core::binding::{ButtonId, GestureDirection, SwipeAccumulator};
+use openlogi_core::binding::{ButtonId, GestureDirection, GestureTuning, SwipeAccumulator};
 use tokio::sync::mpsc;
 use tracing::debug;
 
@@ -36,10 +36,16 @@ enum HoldState {
     },
 }
 
-/// Begin a hold for `cid`, its swipe accumulator started fresh.
-fn begin_hold(cid: u16, button: ButtonId, overlap: bool, skip_first_raw_xy: bool) -> HoldState {
+/// Begin a hold for `cid`, its swipe accumulator started fresh with `tuning`.
+fn begin_hold(
+    cid: u16,
+    button: ButtonId,
+    overlap: bool,
+    skip_first_raw_xy: bool,
+    tuning: GestureTuning,
+) -> HoldState {
     let mut swipe = SwipeAccumulator::default();
-    swipe.begin();
+    swipe.begin(tuning);
     HoldState::Holding {
         cid,
         button,
@@ -64,6 +70,23 @@ pub(super) struct CaptureAccum {
     dpi_down: bool,
     /// Diverted standard-button CIDs held in the last event.
     buttons_down: Vec<u16>,
+    /// The device's swipe thresholds; survives [`Self::reset`].
+    tuning: GestureTuning,
+}
+
+impl CaptureAccum {
+    /// A fresh accumulator applying `tuning` to every hold.
+    pub(super) fn new(tuning: GestureTuning) -> Self {
+        Self {
+            tuning,
+            ..Self::default()
+        }
+    }
+
+    /// Drop all input state (a re-arm), keeping the tuning.
+    pub(super) fn reset(&mut self) {
+        *self = Self::new(self.tuning);
+    }
 }
 
 #[cfg(test)]
@@ -168,6 +191,7 @@ impl CaptureAccum {
                                 held.len() > 1,
                                 cid == reprog_controls::HAPTIC_PANEL_CID
                                     && !self.gestures_down.contains(&cid),
+                                self.tuning,
                             ),
                             None => HoldState::Idle,
                         }

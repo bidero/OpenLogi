@@ -13,7 +13,7 @@ use super::{
     ThumbwheelSensitivity,
 };
 use crate::binding::{
-    ActionRingConfig, ActionRingIcon, ActionRingSlot, Binding, ButtonId, RingAction,
+    ActionRingConfig, ActionRingIcon, ActionRingSlot, Binding, ButtonId, GestureTuning, RingAction,
 };
 use crate::hid::Dpi;
 
@@ -372,5 +372,35 @@ impl Config {
             .entry(device_key.to_string())
             .or_default()
             .thumbwheel_sensitivity = sensitivity;
+    }
+
+    /// The effective gesture and long-press thresholds for `device_key`: each
+    /// per-device override when set, else its default.
+    #[must_use]
+    pub fn gesture_tuning(&self, device_key: &str) -> GestureTuning {
+        let device = self.devices.get(device_key);
+        GestureTuning {
+            swipe_distance: device
+                .and_then(|d| d.gesture_swipe_distance)
+                .unwrap_or_default(),
+            swipe_hold: device
+                .and_then(|d| d.gesture_swipe_hold_ms)
+                .unwrap_or_default(),
+            long_press: device.and_then(|d| d.long_press_ms).unwrap_or_default(),
+        }
+    }
+
+    /// Store `device_key`'s gesture and long-press thresholds, keeping only
+    /// the values that differ from their defaults so an untouched device
+    /// stays out of `config.toml`.
+    pub fn set_device_gesture_tuning(&mut self, device_key: &str, tuning: GestureTuning) {
+        let device = self.devices.entry(device_key.to_string()).or_default();
+        let defaults = GestureTuning::default();
+        device.gesture_swipe_distance =
+            (tuning.swipe_distance != defaults.swipe_distance).then_some(tuning.swipe_distance);
+        device.gesture_swipe_hold_ms =
+            (tuning.swipe_hold != defaults.swipe_hold).then_some(tuning.swipe_hold);
+        device.long_press_ms =
+            (tuning.long_press != defaults.long_press).then_some(tuning.long_press);
     }
 }

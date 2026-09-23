@@ -14,7 +14,7 @@ use std::sync::mpsc;
 use std::thread::{self, JoinHandle, ThreadId};
 use std::time::{Duration, Instant};
 
-use openlogi_core::binding::{Action, Binding, ButtonId, LONG_PRESS_THRESHOLD};
+use openlogi_core::binding::{Action, Binding, ButtonId, LongPressDelay};
 use tracing::warn;
 
 use super::ActionDispatchTarget;
@@ -196,7 +196,7 @@ enum PressBehavior {
 }
 
 impl PressBehavior {
-    fn new(binding: Option<&Binding>, pressed_at: Instant) -> Self {
+    fn new(binding: Option<&Binding>, long_press: LongPressDelay, pressed_at: Instant) -> Self {
         match binding {
             None => Self::LifecycleOnly,
             Some(Binding::Single(action)) => Self::Immediate(action.clone()),
@@ -204,7 +204,7 @@ impl PressBehavior {
             Some(Binding::LongPress(binding)) => Self::LongPressPending {
                 short: binding.short().clone(),
                 long: binding.long().clone(),
-                deadline: pressed_at + LONG_PRESS_THRESHOLD,
+                deadline: pressed_at + long_press.duration(),
             },
         }
     }
@@ -443,16 +443,28 @@ impl ButtonInputHandle {
         button: ButtonId,
         binding: Option<&Binding>,
     ) -> Option<PressToken> {
-        self.try_hook_down_with_target(button, binding, ActionDispatchTarget::capture())
+        self.try_hook_down_with_target(
+            button,
+            binding,
+            LongPressDelay::DEFAULT,
+            ActionDispatchTarget::capture(),
+        )
     }
 
     pub(crate) fn try_hook_down_with_target(
         &self,
         button: ButtonId,
         binding: Option<&Binding>,
+        long_press: LongPressDelay,
         target: ActionDispatchTarget,
     ) -> Option<PressToken> {
-        self.try_down(ButtonSource::current_hook(), button, binding, target)
+        self.try_down(
+            ButtonSource::current_hook(),
+            button,
+            binding,
+            long_press,
+            target,
+        )
     }
 
     pub(crate) fn try_hook_up(&self, button: ButtonId) -> bool {
@@ -505,12 +517,14 @@ impl ButtonInputHandle {
         session: &HidppSessionId,
         button: ButtonId,
         binding: Option<&Binding>,
+        long_press: LongPressDelay,
         target: ActionDispatchTarget,
     ) -> Option<PressToken> {
         self.try_down(
             ButtonSource::Hidpp(session.clone()),
             button,
             binding,
+            long_press,
             target,
         )
     }
@@ -524,12 +538,13 @@ impl ButtonInputHandle {
         session: &HidppSessionId,
         button: ButtonId,
         binding: Option<&Binding>,
+        long_press: LongPressDelay,
         target: ActionDispatchTarget,
     ) -> bool {
         let generation = self.generation.load(Ordering::Acquire);
         let press = self.new_press(
             PressKey::new(ButtonSource::Hidpp(session.clone()), button),
-            PressBehavior::new(binding, Instant::now()),
+            PressBehavior::new(binding, long_press, Instant::now()),
             generation,
             target,
         );
@@ -570,12 +585,13 @@ impl ButtonInputHandle {
         source: ButtonSource,
         button: ButtonId,
         binding: Option<&Binding>,
+        long_press: LongPressDelay,
         target: ActionDispatchTarget,
     ) -> Option<PressToken> {
         let generation = self.generation.load(Ordering::Acquire);
         let press = self.new_press(
             PressKey::new(source, button),
-            PressBehavior::new(binding, Instant::now()),
+            PressBehavior::new(binding, long_press, Instant::now()),
             generation,
             target,
         );

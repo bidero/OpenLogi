@@ -15,7 +15,7 @@ use std::io;
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
 use std::time::{Duration, Instant};
 
-use openlogi_core::binding::{Action, Binding, ButtonId};
+use openlogi_core::binding::{Action, Binding, ButtonId, LongPressDelay};
 use tracing::{debug, info, warn};
 
 use self::button::{
@@ -312,10 +312,11 @@ impl ActionDispatcher {
         &self,
         button: ButtonId,
         binding: Option<&Binding>,
+        long_press: LongPressDelay,
         target: ActionDispatchTarget,
     ) -> Option<PressToken> {
         self.buttons
-            .try_hook_down_with_target(button, binding, target)
+            .try_hook_down_with_target(button, binding, long_press, target)
     }
 
     /// Queue one OS-hook up edge without blocking the callback.
@@ -364,12 +365,14 @@ impl ActionDispatcher {
         session: &HidppSessionId,
         button: ButtonId,
         binding: Option<&Binding>,
+        long_press: LongPressDelay,
         pointer_target: Option<openlogi_hook::PointerTarget>,
     ) -> Option<PressToken> {
         self.buttons.try_hidpp_down(
             session,
             button,
             binding,
+            long_press,
             ActionDispatchTarget::for_pointer(pointer_target),
         )
     }
@@ -386,12 +389,14 @@ impl ActionDispatcher {
         session: &HidppSessionId,
         button: ButtonId,
         binding: Option<&Binding>,
+        long_press: LongPressDelay,
         pointer_target: Option<openlogi_hook::PointerTarget>,
     ) {
         self.buttons.try_hidpp_pulse(
             session,
             button,
             binding,
+            long_press,
             ActionDispatchTarget::for_pointer(pointer_target),
         );
     }

@@ -14,7 +14,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use openlogi_core::binding::{Binding, ButtonId};
+use openlogi_core::binding::{Binding, ButtonId, LongPressDelay};
 use openlogi_hid::{
     CaptureHost, CaptureSessionOutcome, CapturedInput, DeviceRoute, PendingCaptureRestore,
     run_keyboard_capture_session,
@@ -145,7 +145,15 @@ fn dispatch_input(
             } else {
                 debug!(?button, "keyboard key with no binding — ignored");
             }
-            dispatcher.try_hidpp_button_down(session, button, binding, None);
+            // The long-press setting is a mouse setting; keyboard keys keep
+            // the default.
+            dispatcher.try_hidpp_button_down(
+                session,
+                button,
+                binding,
+                LongPressDelay::DEFAULT,
+                None,
+            );
         }
         CapturedInput::ButtonUp(button) => {
             dispatcher.try_hidpp_button_up(session, button);
@@ -155,6 +163,7 @@ fn dispatch_input(
                 session,
                 button,
                 bindings.bindings.get(&button),
+                LongPressDelay::DEFAULT,
                 None,
             );
         }

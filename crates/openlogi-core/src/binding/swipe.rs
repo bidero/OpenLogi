@@ -6,25 +6,15 @@
 use std::time::Instant;
 
 use super::GestureDirection;
-
-/// Minimum dominant-axis travel (raw-XY units) before a held gesture commits to
-/// a direction. Tuned to match Logitech Options+'s responsiveness.
-pub const GESTURE_SWIPE_THRESHOLD: i32 = 50;
-/// Maximum cross-axis travel allowed at the threshold, so only a reasonably
-/// straight swipe commits. Grows with the dominant axis (`max(deadzone, 35%)`).
-pub const GESTURE_SWIPE_DEADZONE: i32 = 40;
-/// Minimum time a gesture button must be held before its travel can commit to a
-/// swipe. Distinguishes a deliberate hold-and-swipe from a quick click whose
-/// cursor happened to be moving. Shared by both gesture paths (the HID++ thumb
-/// pad and the OS-hook Back/Forward buttons).
-pub const GESTURE_HOLD_FOR_SWIPE: std::time::Duration = std::time::Duration::from_millis(160);
+use super::tuning::{GestureTuning, SwipeDistance, SwipeHold};
 
 /// Classify the *running* raw-XY travel of a held gesture button into a
 /// directional swipe, the instant it commits — or `None` while it's still too
 /// short or too diagonal.
 ///
-/// The dominant axis must pass [`GESTURE_SWIPE_THRESHOLD`] while the cross axis
-/// stays within `max(`[`GESTURE_SWIPE_DEADZONE`]`, 35% of dominant)`. Callers
+/// The dominant axis must reach `distance` while the cross axis stays within
+/// `max(4/5 of distance, 35% of dominant)`, so only a reasonably straight
+/// swipe commits. Callers
 /// fire the bound action the moment this returns `Some` — mid-swipe, like
 /// Options+ — rather than waiting for the button release; a press that never
 /// commits a direction is treated as [`GestureDirection::Click`] on release.
@@ -32,7 +22,7 @@ pub const GESTURE_HOLD_FOR_SWIPE: std::time::Duration = std::time::Duration::fro
 /// Coordinates follow the device's raw-XY convention (`+x` = right, `+y` =
 /// down), so an upward swipe (negative `dy`) maps to [`GestureDirection::Up`].
 #[must_use]
-pub fn detect_swipe(dx: i32, dy: i32) -> Option<GestureDirection> {
+pub fn detect_swipe(dx: i32, dy: i32, distance: SwipeDistance) -> Option<GestureDirection> {
     // Saturating throughout: a [`SwipeAccumulator`] hold that never commits (a
     // sustained diagonal) keeps summing travel, so `dx`/`dy` can reach the i32
     // bounds. `i32::MIN.abs()` would panic and a plain `dominant * 35` would
@@ -40,10 +30,12 @@ pub fn detect_swipe(dx: i32, dy: i32) -> Option<GestureDirection> {
     // hazard we must never hit. The clamp is inert in the normal range.
     let (abs_x, abs_y) = (dx.saturating_abs(), dy.saturating_abs());
     let dominant = abs_x.max(abs_y);
-    if dominant < GESTURE_SWIPE_THRESHOLD {
+    let threshold = distance.units();
+    if dominant < threshold {
         return None;
     }
-    let cross_limit = GESTURE_SWIPE_DEADZONE.max(dominant.saturating_mul(35) / 100);
+    let deadzone = threshold * 4 / 5;
+    let cross_limit = deadzone.max(dominant.saturating_mul(35) / 100);
     if abs_x > abs_y {
         if abs_y > cross_limit {
             return None;
@@ -69,7 +61,7 @@ pub fn detect_swipe(dx: i32, dy: i32) -> Option<GestureDirection> {
 /// HID++ gesture sources (`openlogi-hid`'s `0x1b04` raw-XY divert) and the
 /// OS-hook Back/Forward buttons (`openlogi-agent-core`'s CGEventTap). A gesture
 /// button's hold accumulates travel; the instant the dominant axis commits a
-/// direction — after the button has been held [`GESTURE_HOLD_FOR_SWIPE`], so a
+/// direction — after the button has been held the device's [`SwipeHold`], so a
 /// quick click whose cursor drifted doesn't count — [`Self::accumulate`] returns
 /// that direction exactly once, like Logitech Options+. A hold that never
 /// commits is a plain click, reported by [`Self::end`].
@@ -91,12 +83,18 @@ pub struct SwipeAccumulator {
     /// Set once a direction has committed this hold, so it fires exactly once
     /// and the release isn't then also read as a click.
     fired: bool,
+    /// Travel and hold thresholds of the current hold, fixed at [`Self::begin`].
+    distance: SwipeDistance,
+    hold: SwipeHold,
 }
 
 impl SwipeAccumulator {
-    /// Begin a fresh hold, resetting the travel accumulator and commit state.
-    pub fn begin(&mut self) {
+    /// Begin a fresh hold with `tuning`'s thresholds, resetting the travel
+    /// accumulator and commit state.
+    pub fn begin(&mut self, tuning: GestureTuning) {
         self.held_since = Some(Instant::now());
+        self.distance = tuning.swipe_distance;
+        self.hold = tuning.swipe_hold;
         self.dx = 0;
         self.dy = 0;
         self.fired = false;
@@ -111,7 +109,7 @@ impl SwipeAccumulator {
 
     /// Feed a pointer-move / raw-XY delta into the current hold. Returns
     /// `Some(direction)` exactly once per hold — the instant travel commits, and
-    /// only after the hold passes [`GESTURE_HOLD_FOR_SWIPE`] — and `None` while
+    /// only after the hold passes its [`SwipeHold`] — and `None` while
     /// still too short, already committed, or not holding.
     pub fn accumulate(&mut self, dx: i32, dy: i32) -> Option<GestureDirection> {
         if self.fired || self.held_since.is_none() {
@@ -121,8 +119,8 @@ impl SwipeAccumulator {
         self.dy = self.dy.saturating_add(dy);
         let held_long_enough = self
             .held_since
-            .is_some_and(|t| t.elapsed() >= GESTURE_HOLD_FOR_SWIPE);
-        if held_long_enough && let Some(dir) = detect_swipe(self.dx, self.dy) {
+            .is_some_and(|t| t.elapsed() >= self.hold.duration());
+        if held_long_enough && let Some(dir) = detect_swipe(self.dx, self.dy, self.distance) {
             self.fired = true;
             return Some(dir);
         }
@@ -139,14 +137,14 @@ impl SwipeAccumulator {
         was_click
     }
 
-    /// Test-only seam: backdate the current hold so its [`GESTURE_HOLD_FOR_SWIPE`]
+    /// Test-only seam: backdate the current hold so its [`SwipeHold`]
     /// gate is already satisfied, letting a test exercise a committed swipe
     /// without sleeping. Real code never calls this — [`Self::begin`] records the
     /// true start instant. A no-op when not currently holding.
     #[doc(hidden)]
     pub fn backdate_hold_for_test(&mut self) {
         if self.held_since.is_some() {
-            self.held_since = Instant::now().checked_sub(GESTURE_HOLD_FOR_SWIPE * 2);
+            self.held_since = Instant::now().checked_sub(self.hold.duration() * 2);
         }
     }
 }
@@ -155,59 +153,84 @@ impl SwipeAccumulator {
 mod tests {
     use super::*;
 
+    /// The default swipe distance, which the boundary tests below are written
+    /// against.
+    const D: SwipeDistance = SwipeDistance::DEFAULT;
+    const THRESHOLD: i32 = 50;
+
+    #[test]
+    fn a_custom_distance_moves_the_commit_point_and_the_cross_band() {
+        let long = SwipeDistance::from_rounded(120.0);
+        assert_eq!(detect_swipe(119, 0, long), None);
+        assert_eq!(detect_swipe(120, 0, long), Some(GestureDirection::Right));
+        // Cross band floor scales to 4/5 of the distance (96).
+        assert_eq!(detect_swipe(120, 95, long), Some(GestureDirection::Right));
+        assert_eq!(detect_swipe(120, 97, long), None);
+        let short = SwipeDistance::MIN;
+        assert_eq!(detect_swipe(20, 0, short), Some(GestureDirection::Right));
+        assert_eq!(detect_swipe(20, 17, short), None);
+    }
+
+    #[test]
+    fn a_zero_hold_commits_immediately() {
+        let mut acc = SwipeAccumulator::default();
+        acc.begin(GestureTuning {
+            swipe_hold: SwipeHold::MIN,
+            ..GestureTuning::default()
+        });
+        assert_eq!(acc.accumulate(THRESHOLD, 0), Some(GestureDirection::Right));
+    }
+
     // ── Gesture classification ────────────────────────────────────────────────
 
     #[test]
     fn detect_swipe_below_threshold_keeps_accumulating() {
         // Too little travel to commit — caller keeps summing raw-XY.
-        assert_eq!(detect_swipe(40, 5), None);
-        assert_eq!(detect_swipe(0, 0), None);
+        assert_eq!(detect_swipe(40, 5, D), None);
+        assert_eq!(detect_swipe(0, 0, D), None);
     }
 
     #[test]
     fn detect_swipe_commits_clean_direction() {
-        assert_eq!(detect_swipe(120, 5), Some(GestureDirection::Right));
-        assert_eq!(detect_swipe(-120, 5), Some(GestureDirection::Left));
-        assert_eq!(detect_swipe(5, 120), Some(GestureDirection::Down));
-        assert_eq!(detect_swipe(5, -120), Some(GestureDirection::Up));
+        assert_eq!(detect_swipe(120, 5, D), Some(GestureDirection::Right));
+        assert_eq!(detect_swipe(-120, 5, D), Some(GestureDirection::Left));
+        assert_eq!(detect_swipe(5, 120, D), Some(GestureDirection::Down));
+        assert_eq!(detect_swipe(5, -120, D), Some(GestureDirection::Up));
     }
 
     #[test]
     fn detect_swipe_rejects_diagonal() {
         // Past the threshold but too diagonal (cross axis beyond the band).
-        assert_eq!(detect_swipe(60, 60), None);
-        assert_eq!(detect_swipe(-60, -60), None);
+        assert_eq!(detect_swipe(60, 60, D), None);
+        assert_eq!(detect_swipe(-60, -60, D), None);
     }
 
     #[test]
     fn detect_swipe_threshold_and_cross_band_boundaries() {
         // The threshold bound is inclusive (`< THRESHOLD` rejects), so exactly at
         // it commits and one below does not.
-        assert_eq!(
-            detect_swipe(GESTURE_SWIPE_THRESHOLD, 0),
-            Some(GestureDirection::Right)
-        );
-        assert_eq!(detect_swipe(GESTURE_SWIPE_THRESHOLD - 1, 0), None);
+        assert_eq!(detect_swipe(THRESHOLD, 0, D), Some(GestureDirection::Right));
+        assert_eq!(detect_swipe(THRESHOLD - 1, 0, D), None);
 
         // The cross-axis band is max(deadzone, 35% of dominant). For a large
         // dominant the 35% term wins (200 → 70): 69 commits, 71 is too diagonal.
-        assert_eq!(detect_swipe(200, 69), Some(GestureDirection::Right));
-        assert_eq!(detect_swipe(200, 71), None);
+        assert_eq!(detect_swipe(200, 69, D), Some(GestureDirection::Right));
+        assert_eq!(detect_swipe(200, 71, D), None);
         // For a small dominant the 40-unit floor wins (100 → max(40, 35) = 40).
-        assert_eq!(detect_swipe(100, 39), Some(GestureDirection::Right));
-        assert_eq!(detect_swipe(100, 41), None);
+        assert_eq!(detect_swipe(100, 39, D), Some(GestureDirection::Right));
+        assert_eq!(detect_swipe(100, 41, D), None);
     }
 
     #[test]
     fn detect_swipe_does_not_panic_on_extreme_values() {
         // Saturated accumulator travel can reach the i32 bounds. `i32::MIN.abs()`
         // panics and `dominant * 35` overflows — both must be clamped, not crash.
-        assert_eq!(detect_swipe(i32::MAX, 0), Some(GestureDirection::Right));
-        assert_eq!(detect_swipe(i32::MIN, 0), Some(GestureDirection::Left));
-        assert_eq!(detect_swipe(0, i32::MAX), Some(GestureDirection::Down));
-        assert_eq!(detect_swipe(0, i32::MIN), Some(GestureDirection::Up));
+        assert_eq!(detect_swipe(i32::MAX, 0, D), Some(GestureDirection::Right));
+        assert_eq!(detect_swipe(i32::MIN, 0, D), Some(GestureDirection::Left));
+        assert_eq!(detect_swipe(0, i32::MAX, D), Some(GestureDirection::Down));
+        assert_eq!(detect_swipe(0, i32::MIN, D), Some(GestureDirection::Up));
         // A diagonal at the extremes is still rejected, without panicking.
-        assert_eq!(detect_swipe(i32::MIN, i32::MIN), None);
+        assert_eq!(detect_swipe(i32::MIN, i32::MIN, D), None);
     }
 
     // ── SwipeAccumulator (the shared mid-swipe state machine) ─────────────────
@@ -215,11 +238,11 @@ mod tests {
     #[test]
     fn accumulator_commits_a_direction_once_after_the_hold_gate() {
         let mut acc = SwipeAccumulator::default();
-        acc.begin();
+        acc.begin(GestureTuning::default());
         acc.backdate_hold_for_test();
         // A clear rightward swipe commits exactly once, mid-motion.
         assert_eq!(
-            acc.accumulate(GESTURE_SWIPE_THRESHOLD + 10, 0),
+            acc.accumulate(THRESHOLD + 10, 0),
             Some(GestureDirection::Right)
         );
         // Further travel in the same hold must not re-fire.
@@ -229,28 +252,28 @@ mod tests {
     #[test]
     fn accumulator_does_not_commit_before_the_hold_gate() {
         let mut acc = SwipeAccumulator::default();
-        acc.begin(); // held_since = now, so the gate is not yet satisfied
+        acc.begin(GestureTuning::default()); // held_since = now, so the gate is not yet satisfied
         // A big delta arriving immediately (a quick click whose cursor drifted)
         // must not commit.
-        assert_eq!(acc.accumulate(GESTURE_SWIPE_THRESHOLD + 100, 0), None);
+        assert_eq!(acc.accumulate(THRESHOLD + 100, 0), None);
         // Once held long enough, the next delta commits.
         acc.backdate_hold_for_test();
-        assert!(acc.accumulate(GESTURE_SWIPE_THRESHOLD + 100, 0).is_some());
+        assert!(acc.accumulate(THRESHOLD + 100, 0).is_some());
     }
 
     #[test]
     fn accumulator_end_reports_click_only_when_no_swipe_fired() {
         // A hold with only tiny drift never commits → end() is a click.
         let mut acc = SwipeAccumulator::default();
-        acc.begin();
+        acc.begin(GestureTuning::default());
         acc.backdate_hold_for_test();
         assert_eq!(acc.accumulate(2, -1), None);
         assert!(acc.end(), "a hold that never swiped is a click");
 
         // A hold that committed a swipe → end() is not a click.
-        acc.begin();
+        acc.begin(GestureTuning::default());
         acc.backdate_hold_for_test();
-        assert!(acc.accumulate(GESTURE_SWIPE_THRESHOLD + 10, 0).is_some());
+        assert!(acc.accumulate(THRESHOLD + 10, 0).is_some());
         assert!(!acc.end(), "a committed swipe must not also click");
     }
 
@@ -259,7 +282,7 @@ mod tests {
         let mut acc = SwipeAccumulator::default();
         assert!(!acc.is_holding());
         // Travel outside a hold is dropped, never committing a stray swipe.
-        assert_eq!(acc.accumulate(GESTURE_SWIPE_THRESHOLD + 100, 0), None);
+        assert_eq!(acc.accumulate(THRESHOLD + 100, 0), None);
     }
 
     #[test]
@@ -268,10 +291,10 @@ mod tests {
         // several deltas each too small to commit on their own must sum across
         // the hold until the running total crosses the threshold, then commit.
         let mut acc = SwipeAccumulator::default();
-        acc.begin();
+        acc.begin(GestureTuning::default());
         acc.backdate_hold_for_test();
         // Just under half the threshold: one or two steps never reach it, three do.
-        let step = GESTURE_SWIPE_THRESHOLD / 2 - 1;
+        let step = THRESHOLD / 2 - 1;
         assert_eq!(acc.accumulate(step, 0), None, "one step is sub-threshold");
         assert_eq!(acc.accumulate(step, 0), None, "two steps still under");
         assert_eq!(
@@ -288,7 +311,7 @@ mod tests {
         // overflow both an i32 sum and a naive cross-band multiply — both must
         // saturate, not panic (debug builds panic on overflow).
         let mut acc = SwipeAccumulator::default();
-        acc.begin();
+        acc.begin(GestureTuning::default());
         acc.backdate_hold_for_test();
         assert_eq!(
             acc.accumulate(i32::MAX, i32::MAX),
@@ -301,7 +324,7 @@ mod tests {
             "the saturating sum must not panic"
         );
         // A clean axis on a fresh hold still commits with a saturated magnitude.
-        acc.begin();
+        acc.begin(GestureTuning::default());
         acc.backdate_hold_for_test();
         assert_eq!(acc.accumulate(i32::MAX, 0), Some(GestureDirection::Right));
     }
@@ -313,20 +336,20 @@ mod tests {
         // fresh begin() must wipe both the `fired` latch and the travel, so the
         // next press isn't poisoned by the old one.
         let mut acc = SwipeAccumulator::default();
-        acc.begin();
+        acc.begin(GestureTuning::default());
         acc.backdate_hold_for_test();
         // Stale hold commits LEFT (negative dx) and latches `fired`.
         assert_eq!(
-            acc.accumulate(-(GESTURE_SWIPE_THRESHOLD + 10), 0),
+            acc.accumulate(-(THRESHOLD + 10), 0),
             Some(GestureDirection::Left)
         );
         // No end() — a dropped release, then a fresh press.
-        acc.begin();
+        acc.begin(GestureTuning::default());
         acc.backdate_hold_for_test();
         // Had `fired` leaked this would be None; had the negative travel leaked it
         // would commit Left. Committing Right proves begin() reset both.
         assert_eq!(
-            acc.accumulate(GESTURE_SWIPE_THRESHOLD + 10, 0),
+            acc.accumulate(THRESHOLD + 10, 0),
             Some(GestureDirection::Right)
         );
     }
@@ -338,7 +361,7 @@ mod tests {
         let mut acc = SwipeAccumulator::default();
         assert!(!acc.end(), "a release with no hold is not a click");
         // A redundant second release after a real hold already ended is inert too.
-        acc.begin();
+        acc.begin(GestureTuning::default());
         assert!(acc.end(), "the held release is a click");
         assert!(!acc.end(), "the redundant second release is not a click");
     }

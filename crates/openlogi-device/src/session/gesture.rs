@@ -26,7 +26,7 @@ mod arm;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use hidpp::protocol::v20;
-use openlogi_core::binding::{ButtonId, GestureDirection};
+use openlogi_core::binding::{ButtonId, GestureDirection, GestureTuning};
 use tokio::sync::mpsc;
 use tracing::info;
 
@@ -145,6 +145,8 @@ pub struct CaptureSpec {
     /// [`DIVERTABLE_STANDARD_BUTTONS`] and non-gesturing
     /// [`GESTURE_SOURCE_BUTTONS`] whose binding leaves the default.
     pub divert_buttons: Vec<(u16, ButtonId)>,
+    /// The device's swipe thresholds, applied to every raw-XY hold.
+    pub gesture_tuning: GestureTuning,
 }
 
 /// Capture the controls selected by `spec` on `route` until `host.shutdown`
@@ -177,7 +179,12 @@ pub async fn run_capture_session(
     if let Some(direction) = armed.thumbwheel_direction() {
         let _ = host.sink.send(direction);
     }
-    Ok(run_capture(shared, GestureCapture::new(armed), host).await)
+    Ok(run_capture(
+        shared,
+        GestureCapture::new(armed, spec.gesture_tuning),
+        host,
+    )
+    .await)
 }
 
 /// Gesture capture as [`run_capture`] drives it: the armed controls, and the
@@ -190,10 +197,10 @@ struct GestureCapture {
 }
 
 impl GestureCapture {
-    fn new(armed: ArmedControls) -> Self {
+    fn new(armed: ArmedControls, tuning: GestureTuning) -> Self {
         Self {
             armed,
-            accum: Arc::default(),
+            accum: Arc::new(Mutex::new(CaptureAccum::new(tuning))),
         }
     }
 }
@@ -263,7 +270,10 @@ impl ArmedCapture for GestureCapture {
     }
 
     fn reset_input_state(&self) {
-        *self.accum.lock().unwrap_or_else(PoisonError::into_inner) = CaptureAccum::default();
+        self.accum
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .reset();
     }
 
     async fn rearm(&self) {

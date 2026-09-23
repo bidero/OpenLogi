@@ -11,7 +11,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use openlogi_core::binding::{
-    Action, Binding, ButtonId, GestureDirection, SwipeAccumulator, default_binding,
+    Action, Binding, ButtonId, GestureDirection, GestureTuning, SwipeAccumulator, default_binding,
 };
 use openlogi_core::config::KeyTrigger;
 use openlogi_hook::{
@@ -48,6 +48,8 @@ pub struct HookMaps {
     /// Entries survive map rebuilds because they are hardware observations,
     /// not configuration.
     pub(crate) thumbwheel_positive_is_forward: BTreeMap<String, bool>,
+    /// The selected device's swipe and long-press thresholds.
+    pub(crate) gesture_tuning: GestureTuning,
 }
 
 /// Shared, atomically-published [`HookMaps`], threaded between the config owner
@@ -116,14 +118,15 @@ impl HoldState {
         }
     }
 
-    /// Store the token returned by the accepted lifecycle `Down`.
-    fn begin(&mut self, button: ButtonId, press: PressToken) {
+    /// Store the token returned by the accepted lifecycle `Down`, starting the
+    /// swipe with the device's `tuning`.
+    fn begin(&mut self, button: ButtonId, press: PressToken, tuning: GestureTuning) {
         self.current = Some(GestureHold {
             button,
             started_at: Instant::now(),
             press,
         });
-        self.swipe.begin();
+        self.swipe.begin(tuning);
     }
 
     /// Feed a pointer-move delta into the active hold, tagging a committed swipe
@@ -251,14 +254,17 @@ fn handle_button(
     }
     // `try_read` only: a blocking read on the tap thread freezes every pointer
     // event while a config rebuild holds the write lock. Fail open if unavailable.
-    let (binding, is_gesture, pointer_target) =
-        hooks.try_read().map_or((None, false, None), |maps| {
+    let (binding, is_gesture, pointer_target, tuning) = hooks.try_read().map_or_else(
+        |_| (None, false, None, GestureTuning::default()),
+        |maps| {
             (
                 maps.bindings.get(&id).cloned(),
                 maps.gestures.contains_key(&id),
                 maps.pointer_target,
+                maps.gesture_tuning,
             )
-        });
+        },
+    );
     let action_target = if pressed {
         pointer_target.map_or_else(capture_target, ActionDispatchTarget::Pointer)
     } else {
@@ -273,8 +279,10 @@ fn handle_button(
             if let Some(HoldAdmission::Replace(stale)) = &admission {
                 dispatcher.cancel_stale_hook_press(stale);
             }
-            if let Some(press) = dispatcher.try_hook_button_down(id, None, action_target) {
-                HOLD.with_borrow_mut(|h| h.begin(id, press));
+            if let Some(press) =
+                dispatcher.try_hook_button_down(id, None, tuning.long_press, action_target)
+            {
+                HOLD.with_borrow_mut(|h| h.begin(id, press, tuning));
                 return EventDisposition::Suppress;
             }
             return SUPPRESSED_PRESSES
@@ -313,7 +321,7 @@ fn handle_button(
     }
     info!(button = %id, action = %binding.click_action().label(), "button → handling binding");
     let queued = dispatcher
-        .try_hook_button_down(id, Some(&binding), action_target)
+        .try_hook_button_down(id, Some(&binding), tuning.long_press, action_target)
         .is_some();
     SUPPRESSED_PRESSES.with_borrow_mut(|s| remapped_press_disposition(id, queued, s))
 }

@@ -1,17 +1,12 @@
 //! Single-action vs per-direction gesture bindings.
 
 use std::collections::BTreeMap;
-use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
 use super::action::Action;
 use super::defaults::default_gesture_binding;
 use super::gesture::GestureDirection;
-
-/// How long a physical button must remain down before its independent long
-/// action fires.
-pub const LONG_PRESS_THRESHOLD: Duration = Duration::from_millis(500);
 
 /// The mutually exclusive actions of a threshold-based button binding.
 ///

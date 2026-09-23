@@ -11,7 +11,9 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use openlogi_core::binding::{Action, Binding, ButtonId, GestureDirection, default_binding};
+use openlogi_core::binding::{
+    Action, Binding, ButtonId, GestureDirection, GestureTuning, default_binding,
+};
 use openlogi_core::bindings::{button_bindings_for, hidpp_gesture_maps_for, oshook_gestures_for};
 use openlogi_core::config::{Config, ThumbwheelSensitivity};
 use openlogi_core::device_order::PhysicalDeviceKey;
@@ -64,6 +66,8 @@ pub struct DispatchPlan {
     /// This device's effective thumb-wheel sensitivity (device override or the
     /// app-wide default).
     pub thumbwheel_sensitivity: ThumbwheelSensitivity,
+    /// This device's swipe and long-press thresholds.
+    pub gesture_tuning: GestureTuning,
     /// Pointer identity used to select these mouse bindings; absent for the
     /// explicitly focused policy and keyboard input.
     pub pointer_target: Option<openlogi_hook::PointerTarget>,
@@ -181,6 +185,7 @@ pub fn plan_for_device(
             .is_some_and(|binding| binding.click_action() != default_binding(*button))
     });
     let thumbwheel_sensitivity = config.thumbwheel_sensitivity(config_key);
+    let gesture_tuning = config.gesture_tuning(config_key);
     DeviceCapturePlan {
         target: CaptureTarget {
             physical_key,
@@ -195,6 +200,7 @@ pub fn plan_for_device(
                     .collect(),
                 divert_gesture_buttons,
                 divert_buttons,
+                gesture_tuning,
             },
             rearm_generation,
         },
@@ -204,6 +210,7 @@ pub fn plan_for_device(
             gesture_bindings,
             side_gesture_bindings,
             thumbwheel_sensitivity,
+            gesture_tuning,
             pointer_target: None,
         },
     }
@@ -253,6 +260,29 @@ mod tests {
             .divert_buttons
             .iter()
             .any(|&(_, diverted)| diverted == button)
+    }
+
+    #[test]
+    fn the_device_tuning_reaches_both_the_capture_spec_and_the_dispatch_plan() {
+        use openlogi_core::binding::{GestureTuning, LongPressDelay, SwipeDistance};
+        let mut config = Config::default();
+        let default_plan = plan_for_device(&config, "mouse", route(), None, 0, true);
+        assert_eq!(
+            default_plan.target.spec.gesture_tuning,
+            GestureTuning::default()
+        );
+
+        let tuning = GestureTuning {
+            swipe_distance: SwipeDistance::from_rounded(80.0),
+            long_press: LongPressDelay::from_rounded(900.0),
+            ..GestureTuning::default()
+        };
+        config.set_device_gesture_tuning("mouse", tuning);
+        let plan = plan_for_device(&config, "mouse", route(), None, 0, true);
+        assert_eq!(plan.target.spec.gesture_tuning, tuning);
+        assert_eq!(plan.dispatch.gesture_tuning, tuning);
+        // A tuning change is a spec change, so a live capture re-arms with it.
+        assert_ne!(plan.target, default_plan.target);
     }
 
     #[test]

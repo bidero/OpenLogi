@@ -187,6 +187,7 @@ impl InputDispatcher {
                     session,
                     button,
                     binding,
+                    plan.gesture_tuning.long_press,
                     plan.pointer_target,
                 );
                 if is_gesture {
@@ -212,6 +213,7 @@ impl InputDispatcher {
                     session,
                     button,
                     binding,
+                    plan.gesture_tuning.long_press,
                     plan.pointer_target,
                 );
             }

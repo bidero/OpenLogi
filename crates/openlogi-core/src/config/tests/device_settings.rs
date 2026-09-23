@@ -175,3 +175,51 @@ fn empty_dpi_presets_skip_serialization() {
         "empty dpi_presets should be omitted: {body}"
     );
 }
+
+#[test]
+fn gesture_tuning_roundtrips_per_device_and_defaults_elsewhere() {
+    use crate::binding::{GestureTuning, LongPressDelay, SwipeDistance, SwipeHold};
+    let mut cfg = Config::default();
+    let tuning = GestureTuning {
+        swipe_distance: SwipeDistance::from_rounded(90.0),
+        swipe_hold: SwipeHold::from_rounded(60.0),
+        long_press: LongPressDelay::from_rounded(800.0),
+    };
+    cfg.set_device_gesture_tuning("2b042", tuning);
+    let restored = write_and_read(&cfg);
+    assert_eq!(restored.gesture_tuning("2b042"), tuning);
+    assert_eq!(restored.gesture_tuning("absent"), GestureTuning::default());
+}
+
+#[test]
+fn default_gesture_tuning_is_omitted_from_toml() {
+    use crate::binding::{GestureTuning, SwipeDistance};
+    let mut cfg = Config::default();
+    cfg.set_device_gesture_tuning(
+        "2b042",
+        GestureTuning {
+            swipe_distance: SwipeDistance::from_rounded(90.0),
+            ..GestureTuning::default()
+        },
+    );
+    let body = toml::to_string_pretty(&cfg).expect("serialize");
+    assert!(body.contains("gesture_swipe_distance = 90"), "{body}");
+    assert!(!body.contains("gesture_swipe_hold_ms"), "{body}");
+    assert!(!body.contains("long_press_ms"), "{body}");
+    // Returning every value to its default clears the overrides again.
+    cfg.set_device_gesture_tuning("2b042", GestureTuning::default());
+    let body = toml::to_string_pretty(&cfg).expect("serialize");
+    assert!(!body.contains("gesture_swipe"), "{body}");
+}
+
+#[test]
+fn out_of_range_gesture_tuning_is_rejected_on_load() {
+    for body in [
+        "schema_version = 7\n[devices.mouse]\ngesture_swipe_distance = 5\n",
+        "schema_version = 7\n[devices.mouse]\ngesture_swipe_hold_ms = 9000\n",
+        "schema_version = 7\n[devices.mouse]\nlong_press_ms = 10\n",
+    ] {
+        let parsed: Result<Config, _> = toml::from_str(body);
+        assert!(parsed.is_err(), "should reject: {body}");
+    }
+}
