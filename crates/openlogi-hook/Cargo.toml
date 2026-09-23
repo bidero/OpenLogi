@@ -40,7 +40,7 @@ objc2 = { workspace = true }
 objc2-app-kit = { workspace = true, features = ["NSWorkspace", "NSRunningApplication"] }
 objc2-application-services = { workspace = true, features = ["std", "HIServices", "AXUIElement", "AXError"] }
 objc2-core-foundation = { workspace = true, features = ["std", "CFArray", "CFDictionary", "CFNumber", "CFString"] }
-objc2-core-graphics = { workspace = true, features = ["std", "CGWindow", "CGWindowLevel"] }
+objc2-core-graphics = { workspace = true, features = ["std", "CGDirectDisplay", "CGError", "CGWindow", "CGWindowLevel"] }
 objc2-foundation = { workspace = true, features = [
     "block2",
     "NSDictionary",

@@ -7,8 +7,9 @@ use objc2_app_kit::{NSRunningApplication, NSWorkspace};
 use objc2_application_services::{AXError, AXUIElement};
 use objc2_core_foundation::{CFArray, CFDictionary, CFNumber, CFRetained, CFString, CFType};
 use objc2_core_graphics::{
-    CGWindowLevelForKey, CGWindowLevelKey, CGWindowListCopyWindowInfo, CGWindowListOption,
-    kCGWindowAlpha, kCGWindowBounds, kCGWindowLayer, kCGWindowNumber, kCGWindowOwnerPID,
+    CGDisplayBounds, CGError, CGGetActiveDisplayList, CGWindowLevelForKey, CGWindowLevelKey,
+    CGWindowListCopyWindowInfo, CGWindowListOption, kCGWindowAlpha, kCGWindowBounds,
+    kCGWindowLayer, kCGWindowNumber, kCGWindowOwnerPID,
 };
 
 use super::foreground::foreground_app_from_running_application;
@@ -32,46 +33,104 @@ fn number(info: &Dictionary, key: &CFString) -> Option<CFRetained<CFNumber>> {
     info.get(key)?.downcast::<CFNumber>().ok()
 }
 
-fn window(info: CFRetained<CFType>) -> Option<(Window, f64)> {
-    let info = dictionary(info)?;
+/// Why one `CGWindowListCopyWindowInfo` entry could not be read. Logged
+/// because a single unreadable entry above the cursor makes the whole hit
+/// test `Unavailable` (see `hit_test`).
+struct WindowError {
+    /// The key or conversion that failed.
+    reason: &'static str,
+    /// The window layer, once it was read.
+    layer: Option<i32>,
+}
+
+const fn unreadable(reason: &'static str, layer: Option<i32>) -> WindowError {
+    WindowError { reason, layer }
+}
+
+fn window(info: CFRetained<CFType>) -> Result<(Window, f64), WindowError> {
+    let info = dictionary(info).ok_or(unreadable("entry", None))?;
     // SAFETY: immutable Core Graphics string constants have process lifetime.
     let bounds_key = unsafe { kCGWindowBounds };
-    let bounds = dictionary(info.get(bounds_key)?)?;
+    let bounds = info
+        .get(bounds_key)
+        .and_then(dictionary)
+        .ok_or(unreadable("bounds", None))?;
     // SAFETY: immutable Core Graphics string constant.
-    let layer = number(&info, unsafe { kCGWindowLayer })?.as_i32()?;
+    let layer = number(&info, unsafe { kCGWindowLayer })
+        .and_then(|n| n.as_i32())
+        .ok_or(unreadable("layer", None))?;
     // SAFETY: immutable Core Graphics string constant.
-    let alpha = number(&info, unsafe { kCGWindowAlpha })?.as_f64()?;
+    let alpha = number(&info, unsafe { kCGWindowAlpha })
+        .and_then(|n| n.as_f64())
+        .ok_or(unreadable("alpha", None))?;
     let target = if layer == CGWindowLevelForKey(CGWindowLevelKey::DesktopWindowLevelKey)
         || layer == CGWindowLevelForKey(CGWindowLevelKey::DesktopIconWindowLevelKey)
     {
         PointerTarget::Desktop
     } else if layer == CGWindowLevelForKey(CGWindowLevelKey::NormalWindowLevelKey) {
         // SAFETY: immutable Core Graphics string constant.
-        let process_id = number(&info, unsafe { kCGWindowOwnerPID })?.as_i32()?;
+        let process_id = number(&info, unsafe { kCGWindowOwnerPID })
+            .and_then(|n| n.as_i32())
+            .ok_or(unreadable("owner pid", Some(layer)))?;
         // SAFETY: immutable Core Graphics string constant.
-        let window_id = number(&info, unsafe { kCGWindowNumber })?.as_i64()?;
-        if process_id <= 0 || window_id <= 0 {
-            return None;
-        }
+        let window_id = number(&info, unsafe { kCGWindowNumber })
+            .and_then(|n| n.as_i64())
+            .ok_or(unreadable("window number", Some(layer)))?;
+        let window_id = u64::try_from(window_id)
+            .ok()
+            .filter(|_| process_id > 0 && window_id > 0)
+            .ok_or(unreadable("non-positive id", Some(layer)))?;
         PointerTarget::Window {
             process_id,
-            window_id: u64::try_from(window_id).ok()?,
+            window_id,
         }
     } else {
         // Menus, Dock, floating panels and other overlays are obstacles, not
         // permission to select an application or desktop beneath them.
         PointerTarget::Unavailable
     };
-    Some((
-        Window {
-            x: number(&bounds, &CFString::from_static_str("X"))?.as_f64()?,
-            y: number(&bounds, &CFString::from_static_str("Y"))?.as_f64()?,
-            width: number(&bounds, &CFString::from_static_str("Width"))?.as_f64()?,
-            height: number(&bounds, &CFString::from_static_str("Height"))?.as_f64()?,
-            target,
-        },
-        alpha,
-    ))
+    let field = |key: &'static str| {
+        number(&bounds, &CFString::from_static_str(key))
+            .and_then(|n| n.as_f64())
+            .ok_or(unreadable("geometry", Some(layer)))
+    };
+    let window = Window {
+        x: field("X")?,
+        y: field("Y")?,
+        width: field("Width")?,
+        height: field("Height")?,
+        target,
+    };
+    // Before macOS 12 the Dock keeps a display-sized window on screen at the
+    // Dock level while it is visible. It draws nothing over the apps below
+    // it, so it is not an obstacle; the Dock's own strip still is.
+    if layer == CGWindowLevelForKey(CGWindowLevelKey::DockWindowLevelKey)
+        && covers_a_display(&window)
+    {
+        return Ok((window, 0.0));
+    }
+    Ok((window, alpha))
+}
+
+/// Whether `window` exactly covers one active display.
+fn covers_a_display(window: &Window) -> bool {
+    const MAX_DISPLAYS: u32 = 16;
+    let mut ids = [0_u32; MAX_DISPLAYS as usize];
+    let mut count = 0_u32;
+    // SAFETY: `ids` holds MAX_DISPLAYS entries and `count` is a live local.
+    let result = unsafe { CGGetActiveDisplayList(MAX_DISPLAYS, ids.as_mut_ptr(), &raw mut count) };
+    if result != CGError::Success {
+        return false;
+    }
+    ids.iter().take(count as usize).any(|&id| {
+        let bounds = CGDisplayBounds(id);
+        window.has_bounds(
+            bounds.origin.x,
+            bounds.origin.y,
+            bounds.size.width,
+            bounds.size.height,
+        )
+    })
 }
 
 pub(crate) fn pointer_context() -> Option<PointerContext> {
@@ -82,9 +141,16 @@ pub(crate) fn pointer_context() -> Option<PointerContext> {
     // SAFETY: CGWindowListCopyWindowInfo returns an array of CF dictionaries.
     let windows = unsafe { CFRetained::cast_unchecked::<CFArray<CFType>>(windows) };
     let candidates = windows.into_iter().filter_map(|info| match window(info) {
-        Some((_, alpha)) if alpha <= 0.0 => None,
-        Some((window, _)) => Some(Some(window)),
-        None => Some(None),
+        Ok((_, alpha)) if alpha <= 0.0 => None,
+        Ok((window, _)) => Some(Some(window)),
+        Err(error) => {
+            tracing::debug!(
+                reason = error.reason,
+                layer = ?error.layer,
+                "unreadable window-list entry"
+            );
+            Some(None)
+        }
     });
     let target = hit_test(point, candidates);
     let app = if let PointerTarget::Window { process_id, .. } = target {

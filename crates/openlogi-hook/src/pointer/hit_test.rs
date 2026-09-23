@@ -11,6 +11,16 @@ pub(crate) struct Window {
 }
 
 /// A malformed row is not evidence that the space behind it is desktop.
+impl Window {
+    /// Whether this window has exactly the given bounds, within half a point
+    /// (window-list and display bounds are integral points reported as
+    /// floats).
+    pub(crate) fn has_bounds(&self, x: f64, y: f64, width: f64, height: f64) -> bool {
+        let same = |a: f64, b: f64| (a - b).abs() < 0.5;
+        same(self.x, x) && same(self.y, y) && same(self.width, width) && same(self.height, height)
+    }
+}
+
 pub(crate) fn hit_test(
     point: CursorPosition,
     windows: impl IntoIterator<Item = Option<Window>>,
@@ -33,6 +43,19 @@ pub(crate) fn hit_test(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn has_bounds_matches_a_display_sized_window_only() {
+        let dock_overlay = window(0.0, 0.0, 1280.0, 800.0, PointerTarget::Unavailable);
+        assert!(dock_overlay.has_bounds(0.0, 0.0, 1280.0, 800.0));
+        assert!(dock_overlay.has_bounds(0.2, 0.0, 1280.0, 799.8));
+        let dock_strip = window(300.0, 730.0, 680.0, 70.0, PointerTarget::Unavailable);
+        assert!(!dock_strip.has_bounds(0.0, 0.0, 1280.0, 800.0));
+        // A second display at a negative origin is its own match.
+        let other = window(-1920.0, 0.0, 1920.0, 1080.0, PointerTarget::Unavailable);
+        assert!(other.has_bounds(-1920.0, 0.0, 1920.0, 1080.0));
+        assert!(!other.has_bounds(0.0, 0.0, 1920.0, 1080.0));
+    }
 
     fn window(x: f64, y: f64, width: f64, height: f64, target: PointerTarget) -> Window {
         Window {

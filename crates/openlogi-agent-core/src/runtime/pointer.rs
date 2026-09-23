@@ -14,6 +14,7 @@ impl ActionDispatchTarget {
         if !pointer_action_allowed(action, target, current.target, || {
             openlogi_hook::pointer_target_is_focused(target)
         }) {
+            tracing::debug!(captured = ?target, current = ?current.target, "pointer target refused");
             return None;
         }
         // Safari's existing AX implementation uses AXFocusedWindow. It is
