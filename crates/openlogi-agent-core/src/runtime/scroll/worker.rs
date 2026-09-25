@@ -678,7 +678,7 @@ mod tests {
                 .recv_timeout(Duration::from_secs(1))
                 .expect("surviving source completes");
             output.push(frame);
-            if frame.phase == openlogi_inject::SmoothScrollPhase::Ended {
+            if frame.phase == openlogi_inject::SmoothScrollPhase::MomentumEnded {
                 break;
             }
         }

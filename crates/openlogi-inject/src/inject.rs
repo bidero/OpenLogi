@@ -464,6 +464,13 @@ pub enum SmoothScrollPhase {
     Ended,
     /// The capture source ended before the animation reached its target.
     Cancelled,
+    /// First frame of the coast after the wheel stopped, like a trackpad's
+    /// fling after the fingers lift.
+    MomentumBegan,
+    /// An intermediate coasting frame.
+    MomentumChanged,
+    /// Final coasting frame, or an interrupted coast.
+    MomentumEnded,
 }
 
 /// Synthesise one frame of a finite smooth-scroll animation.

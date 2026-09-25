@@ -91,18 +91,25 @@ pub(in crate::inject) fn post_smooth_scroll(delta: ScrollDelta, phase: SmoothScr
         return;
     };
     set_continuous_scroll_fields(&ev, delta);
-    ev.set_integer_value_field(SCROLL_PHASE, scroll_phase_value(phase));
-    ev.set_integer_value_field(MOMENTUM_PHASE, 0);
+    let (scroll, momentum) = phase_values(phase);
+    ev.set_integer_value_field(SCROLL_PHASE, scroll);
+    ev.set_integer_value_field(MOMENTUM_PHASE, momentum);
     tag_synthetic(&ev);
     ev.post(CGEventTapLocation::HID);
 }
 
-const fn scroll_phase_value(phase: SmoothScrollPhase) -> i64 {
+/// `(kCGScrollWheelEventScrollPhase, kCGScrollWheelEventMomentumPhase)`.
+/// A momentum frame carries no scroll phase, as after a trackpad lift-off, so
+/// applications apply their own bounded edge bounce to it.
+const fn phase_values(phase: SmoothScrollPhase) -> (i64, i64) {
     match phase {
-        SmoothScrollPhase::Began => 1,
-        SmoothScrollPhase::Changed => 2,
-        SmoothScrollPhase::Ended => 4,
-        SmoothScrollPhase::Cancelled => 8,
+        SmoothScrollPhase::Began => (1, 0),
+        SmoothScrollPhase::Changed => (2, 0),
+        SmoothScrollPhase::Ended => (4, 0),
+        SmoothScrollPhase::Cancelled => (8, 0),
+        SmoothScrollPhase::MomentumBegan => (0, 1),
+        SmoothScrollPhase::MomentumChanged => (0, 2),
+        SmoothScrollPhase::MomentumEnded => (0, 3),
     }
 }
 

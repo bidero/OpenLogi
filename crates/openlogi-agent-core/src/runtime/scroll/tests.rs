@@ -311,3 +311,81 @@ fn the_default_feel_glides_for_a_few_hundred_milliseconds() {
     let settle = Duration::from_secs_f64(feel.time_constant * 3.0);
     assert!(settle > ms(300) && settle < ms(450), "{settle:?}");
 }
+
+use SmoothScrollPhase::{Began, Changed, Ended, MomentumBegan, MomentumChanged, MomentumEnded};
+
+fn phases(frames: &[ScrollFrame]) -> Vec<SmoothScrollPhase> {
+    let mut phases: Vec<SmoothScrollPhase> = frames.iter().map(|frame| frame.phase).collect();
+    phases.dedup();
+    phases
+}
+
+#[test]
+fn the_glide_coasts_as_momentum_once_the_wheel_pauses() {
+    let base = Instant::now();
+    let mut engine = engine();
+    let mut frames = Vec::new();
+    engine.impulse(source(), wheel(0.0, 1.0), base, &mut |frame| {
+        frames.push(frame);
+    });
+    for millis in (8..=800).step_by(8) {
+        engine.advance_due(base + ms(millis), &mut |frame| frames.push(frame));
+    }
+
+    assert_eq!(
+        phases(&frames),
+        [
+            Began,
+            Changed,
+            Ended,
+            MomentumBegan,
+            MomentumChanged,
+            MomentumEnded
+        ]
+    );
+    assert_delta(cumulative(&frames), wheel(0.0, 1.0));
+    let touching: f64 = frames
+        .iter()
+        .filter(|frame| matches!(frame.phase, Began | Changed))
+        .map(|frame| frame.delta.y)
+        .sum();
+    assert!(touching < 0.5, "most of the glide coasts: {touching}");
+}
+
+#[test]
+fn a_notch_during_the_coast_starts_a_new_gesture() {
+    let base = Instant::now();
+    let mut engine = engine();
+    let mut frames = Vec::new();
+    engine.impulse(source(), wheel(0.0, 1.0), base, &mut |frame| {
+        frames.push(frame);
+    });
+    for millis in (8..=80).step_by(8) {
+        engine.advance_due(base + ms(millis), &mut |frame| frames.push(frame));
+    }
+    engine.impulse(source(), wheel(0.0, 1.0), base + ms(85), &mut |frame| {
+        frames.push(frame);
+    });
+    for millis in (88..=1600).step_by(8) {
+        engine.advance_due(base + ms(millis), &mut |frame| frames.push(frame));
+    }
+
+    assert_eq!(
+        phases(&frames),
+        [
+            Began,
+            Changed,
+            Ended,
+            MomentumBegan,
+            MomentumChanged,
+            MomentumEnded,
+            Began,
+            Changed,
+            Ended,
+            MomentumBegan,
+            MomentumChanged,
+            MomentumEnded,
+        ]
+    );
+    assert_delta(cumulative(&frames), wheel(0.0, 2.0));
+}
