@@ -167,7 +167,36 @@ fn dispatch_native(native: NativeAction) {
         // synthesised power key), so ask powermanagement directly. `pmset
         // sleepnow` works for the console user without privileges.
         NativeAction::Sleep => sleep_system(),
+        NativeAction::SmartZoom => smart_zoom(),
     }
+}
+
+/// Post the trackpad's two-finger double-tap gesture, which the frontmost app
+/// answers with Smart Zoom (Safari, Preview, Maps…).
+///
+/// There is no public API for it. The WindowServer's gesture events are
+/// `CGEvent`s of the undocumented type 29 (`kCGSEventGesture`, set through
+/// field 55, `kCGSEventTypeField`, because `CGEventType` has no such case),
+/// and field 110 (`kCGEventGestureHIDType`) names the gesture:
+/// `kIOHIDEventTypeZoomToggle` = 22. This is the event other mouse
+/// utilities synthesize for Smart Zoom.
+fn smart_zoom() {
+    const EVENT_TYPE_FIELD: u32 = 55;
+    const GESTURE_EVENT_TYPE: i64 = 29;
+    const GESTURE_HID_TYPE_FIELD: u32 = 110;
+    const HID_ZOOM_TOGGLE: i64 = 22;
+    let Ok(src) = CGEventSource::new(CGEventSourceStateID::HIDSystemState) else {
+        tracing::warn!("CGEventSource::new failed for smart zoom");
+        return;
+    };
+    let Ok(event) = CGEvent::new(src) else {
+        tracing::warn!("CGEvent::new failed for smart zoom");
+        return;
+    };
+    event.set_integer_value_field(EVENT_TYPE_FIELD, GESTURE_EVENT_TYPE);
+    event.set_integer_value_field(GESTURE_HID_TYPE_FIELD, HID_ZOOM_TOGGLE);
+    tag_synthetic(&event);
+    event.post(CGEventTapLocation::HID);
 }
 
 fn nx_key(key: MediaKey) -> i32 {

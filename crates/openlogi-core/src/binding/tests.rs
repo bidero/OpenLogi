@@ -381,6 +381,7 @@ fn persisted_action_variant_names_are_stable() {
         "ShowActionsRing",
         "ShowDesktop",
         "Sleep",
+        "SmartZoom",
         "ToggleSmartShift",
         "TypeText",
         "Undo",
