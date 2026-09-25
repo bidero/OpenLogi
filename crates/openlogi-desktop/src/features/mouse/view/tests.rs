@@ -95,6 +95,7 @@ fn a_selected_gesture_can_render_in_the_binding_inspector(cx: &mut TestAppContex
                 overridden: None,
             },
             &view.action_search,
+            &view.shortcut_input,
             &entity,
             cx,
         );

@@ -130,6 +130,8 @@ pub struct MouseModelView {
     gesture_active_dir: Option<GestureDirection>,
     action_picker_open: bool,
     action_search: Entity<InputState>,
+    /// The custom-shortcut field in the action library.
+    shortcut_input: Entity<InputState>,
     _state_obs: Subscription,
 }
 
@@ -144,6 +146,10 @@ impl MouseModelView {
             }
         })
         .detach();
+        let shortcut_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(tr!("action_ring.shortcut_e_g_cmd_plus_shift_plus_p"))
+        });
         let state_obs = AppState::repaint_on(cx, |event| {
             matches!(
                 event,
@@ -160,6 +166,7 @@ impl MouseModelView {
             gesture_active_dir: None,
             action_picker_open: false,
             action_search,
+            shortcut_input,
             _state_obs: state_obs,
         }
     }
@@ -221,14 +228,27 @@ fn set_control_hovered(
     });
 }
 
-impl Render for MouseModelView {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+impl MouseModelView {
+    /// Keep the cached inputs' placeholders in the current language.
+    fn localize_placeholders(&self, window: &mut Window, cx: &mut Context<Self>) {
         crate::ui::components::localize_placeholder(
             &self.action_search,
             tr!("actions.search_actions"),
             window,
             cx,
         );
+        crate::ui::components::localize_placeholder(
+            &self.shortcut_input,
+            tr!("action_ring.shortcut_e_g_cmd_plus_shift_plus_p"),
+            window,
+            cx,
+        );
+    }
+}
+
+impl Render for MouseModelView {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.localize_placeholders(window, cx);
         let (empty_bindings, empty_gesture_maps) = (BTreeMap::new(), BTreeMap::new());
         let MouseWorkspaceData {
             device_key,
@@ -321,6 +341,7 @@ impl Render for MouseModelView {
                 overridden,
             },
             &self.action_search,
+            &self.shortcut_input,
             &view,
             cx,
         );
