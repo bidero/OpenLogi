@@ -12,7 +12,7 @@ use gpui_component::{
     Disableable as _, Icon, IconName, Selectable as _, Sizable as _, button::Button, h_flex,
     input::InputState, scroll::ScrollableElement as _, v_flex,
 };
-use openlogi_core::binding::{Action, ButtonId, GestureDirection, KeyCombo, default_binding};
+use openlogi_core::binding::{Action, ButtonId, GestureDirection, default_binding};
 
 use super::hotspots::MouseControlId;
 use super::thumbwheel::ThumbwheelPreset;
@@ -24,6 +24,7 @@ use crate::features::binding_editor::{
 use crate::state::AppState;
 use crate::ui::action::localized_action_label;
 use crate::ui::components::{MenuRow, control_button, control_input};
+use crate::ui::shortcut_field::ShortcutField;
 use crate::ui::theme::{self, ACCENT_BLUE, Palette, Typography as _};
 
 pub(super) const INSPECTOR_W: f32 = 328.;
@@ -44,14 +45,14 @@ pub(super) struct BindingInspectorData<'a> {
 struct ActionPickerContext<'a> {
     open: bool,
     search: &'a Entity<InputState>,
-    shortcut: &'a Entity<InputState>,
+    shortcut: &'a Entity<ShortcutField>,
     view: &'a Entity<MouseModelView>,
 }
 
 pub(super) fn binding_inspector(
     data: BindingInspectorData<'_>,
     action_search: &Entity<InputState>,
-    shortcut_input: &Entity<InputState>,
+    shortcut_input: &Entity<ShortcutField>,
     view: &Entity<MouseModelView>,
     cx: &Context<MouseModelView>,
 ) -> gpui::Div {
@@ -653,7 +654,7 @@ fn action_library(
     id_prefix: &'static str,
     current: Option<&Action>,
     action_search: &Entity<InputState>,
-    shortcut_input: &Entity<InputState>,
+    shortcut_input: &Entity<ShortcutField>,
     on_pick: &PickFn,
     pal: Palette,
     cx: &Context<MouseModelView>,
@@ -684,32 +685,23 @@ fn action_library(
 
 /// Record a keyboard chord (e.g. `Cmd+Shift+P`) as the selected control's
 /// action. An unparsable chord is ignored, as in the Actions Ring editor.
-fn shortcut_editor(input: &Entity<InputState>, on_pick: &PickFn, pal: Palette) -> gpui::Div {
-    let submit_input = input.clone();
+fn shortcut_editor(field: &Entity<ShortcutField>, on_pick: &PickFn, pal: Palette) -> gpui::Div {
+    let submit = field.clone();
     let on_pick = on_pick.clone();
     v_flex()
         .gap_1()
         .child(editor_section(tr!("action_ring.custom_shortcut"), pal))
         .child(
-            h_flex()
-                .gap_2()
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .child(control_input(input).cleanable(true)),
-                )
-                .child(
-                    Button::new("inspector-add-shortcut")
-                        .compact()
-                        .label(tr!("common.add"))
-                        .on_click(move |_, window, cx| {
-                            let shortcut = submit_input.read(cx).value().to_string();
-                            if let Ok(combo) = shortcut.parse::<KeyCombo>() {
-                                on_pick(Action::CustomShortcut(combo), window, cx);
-                            }
-                        }),
-                ),
+            h_flex().gap_2().child(field.clone()).child(
+                Button::new("inspector-add-shortcut")
+                    .compact()
+                    .label(tr!("common.add"))
+                    .on_click(move |_, window, cx| {
+                        if let Some(combo) = submit.read(cx).combo(cx) {
+                            on_pick(Action::CustomShortcut(combo), window, cx);
+                        }
+                    }),
+            ),
         )
 }
 

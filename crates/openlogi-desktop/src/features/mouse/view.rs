@@ -26,6 +26,7 @@ use crate::app::{glow_canvas, keyboard_glow};
 use crate::features::profiles::{friendly_app_name, profile_canvas_status};
 use crate::services::assets::{GlowGeometry, ResolvedAsset};
 use crate::state::{AppState, DeviceKey, DeviceRecord, StateEvent};
+use crate::ui::shortcut_field::ShortcutField;
 use crate::ui::theme::{self, ACCENT_BLUE};
 
 const SIDE_GAP: f32 = 24.;
@@ -131,7 +132,7 @@ pub struct MouseModelView {
     action_picker_open: bool,
     action_search: Entity<InputState>,
     /// The custom-shortcut field in the action library.
-    shortcut_input: Entity<InputState>,
+    shortcut_input: Entity<ShortcutField>,
     _state_obs: Subscription,
 }
 
@@ -146,10 +147,7 @@ impl MouseModelView {
             }
         })
         .detach();
-        let shortcut_input = cx.new(|cx| {
-            InputState::new(window, cx)
-                .placeholder(tr!("action_ring.shortcut_e_g_cmd_plus_shift_plus_p"))
-        });
+        let shortcut_input = cx.new(|cx| ShortcutField::new(window, cx));
         let state_obs = AppState::repaint_on(cx, |event| {
             matches!(
                 event,
@@ -234,12 +232,6 @@ impl MouseModelView {
         crate::ui::components::localize_placeholder(
             &self.action_search,
             tr!("actions.search_actions"),
-            window,
-            cx,
-        );
-        crate::ui::components::localize_placeholder(
-            &self.shortcut_input,
-            tr!("action_ring.shortcut_e_g_cmd_plus_shift_plus_p"),
             window,
             cx,
         );

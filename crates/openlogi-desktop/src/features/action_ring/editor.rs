@@ -9,7 +9,7 @@ use gpui_component::{
     scroll::ScrollableElement as _, v_flex,
 };
 use openlogi_core::binding::{
-    Action, ActionRingEntry, ActionRingIcon, ActionRingSlot, ApplicationTarget, Category, KeyCombo,
+    Action, ActionRingEntry, ActionRingIcon, ActionRingSlot, ApplicationTarget, Category,
     RingAction,
 };
 
@@ -18,13 +18,14 @@ use crate::features::binding_editor::editor_section;
 use crate::state::AppState;
 use crate::ui::action::localized_action_label;
 use crate::ui::components::{MenuRow, control_input};
+use crate::ui::shortcut_field::ShortcutField;
 use crate::ui::theme::{self, Palette, Typography as _};
 
 pub(super) fn action_library(
     slot: ActionRingSlot,
     current: Option<&ActionRingEntry>,
     application_input: &Entity<InputState>,
-    shortcut_input: &Entity<InputState>,
+    shortcut_input: &Entity<ShortcutField>,
     library_scroll: &ScrollHandle,
     pal: Palette,
 ) -> impl IntoElement {
@@ -158,33 +159,24 @@ fn icon_button(
 
 fn shortcut_editor(
     slot: ActionRingSlot,
-    input: &Entity<InputState>,
+    field: &Entity<ShortcutField>,
     pal: Palette,
 ) -> impl IntoElement {
-    let submit_input = input.clone();
+    let submit = field.clone();
     v_flex()
         .gap_1()
         .child(editor_section(tr!("action_ring.custom_shortcut"), pal))
         .child(
-            h_flex()
-                .gap_2()
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .child(control_input(input).cleanable(true)),
-                )
-                .child(
-                    Button::new("ring-add-shortcut")
-                        .compact()
-                        .label(tr!("common.add"))
-                        .on_click(move |_, _, cx| {
-                            let shortcut = submit_input.read(cx).value().to_string();
-                            if let Ok(combo) = shortcut.parse::<KeyCombo>() {
-                                commit_action(slot, Action::CustomShortcut(combo), cx);
-                            }
-                        }),
-                ),
+            h_flex().gap_2().child(field.clone()).child(
+                Button::new("ring-add-shortcut")
+                    .compact()
+                    .label(tr!("common.add"))
+                    .on_click(move |_, _, cx| {
+                        if let Some(combo) = submit.read(cx).combo(cx) {
+                            commit_action(slot, Action::CustomShortcut(combo), cx);
+                        }
+                    }),
+            ),
         )
 }
 

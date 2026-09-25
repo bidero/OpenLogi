@@ -22,6 +22,7 @@ use self::action_icons::action_icon_path;
 use self::editor::action_library;
 use crate::state::{AppState, StateEvent, StateEvents};
 use crate::ui::action::localized_action_label;
+use crate::ui::shortcut_field::ShortcutField;
 use crate::ui::theme::{self, Palette, Typography as _};
 
 /// Stateful Actions Ring editor. Ring configuration itself lives in
@@ -30,7 +31,7 @@ pub struct ActionRingPanel {
     focus_handle: FocusHandle,
     selected_slot: ActionRingSlot,
     application_input: Option<Entity<InputState>>,
-    shortcut_input: Option<Entity<InputState>>,
+    shortcut_input: Option<Entity<ShortcutField>>,
     library_scroll: ScrollHandle,
     #[expect(dead_code, reason = "held to keep the AppState subscription alive")]
     state_obs: Subscription,
@@ -69,12 +70,10 @@ impl Render for ActionRingPanel {
             window,
             cx,
         );
-        let shortcut_input = editor_input(
-            &mut self.shortcut_input,
-            tr!("action_ring.shortcut_e_g_cmd_plus_shift_plus_p"),
-            window,
-            cx,
-        );
+        let shortcut_input = self
+            .shortcut_input
+            .get_or_insert_with(|| cx.new(|cx| ShortcutField::new(window, cx)))
+            .clone();
         let view = cx.entity();
 
         v_flex()
