@@ -352,9 +352,11 @@ fn pointer_tab(
                 .fill(),
             ))
             .child(
+                // Full width: its three-way resolution control and captions
+                // do not fit a half-width card in longer languages.
                 div()
+                    .w_full()
                     .min_w(POINTER_CARD_MIN_W)
-                    .flex_1()
                     .child(scrolling_card(pal, cx)),
             )
             .when(has_buttons, |grid| {
@@ -441,6 +443,8 @@ fn scrolling_card(pal: Palette, cx: &mut Context<AppView>) -> impl IntoElement {
         .gap_4()
         .child(
             v_flex()
+                .flex_1()
+                .min_w_0()
                 .child(
                     div()
                         .text_body()
