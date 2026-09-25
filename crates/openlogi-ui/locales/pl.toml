@@ -246,6 +246,10 @@ long_press_delay = "Długie naciśnięcie"
 long_press_delay_description = "Jak długo trzymać przycisk, zanim wykona się akcja długiego naciśnięcia."
 duration_ms = "%{value} ms"
 reset_gesture_defaults = "Przywróć domyślne"
+smooth_scroll_acceleration = "Przyspieszenie przewijania"
+smooth_scroll_acceleration_description = "Jak bardzo szybkie kręcenie kółkiem wydłuża płynne przewijanie. 0 to stały krok."
+smooth_scroll_glide = "Płynność przewijania"
+smooth_scroll_glide_description = "Jak długo płynne przewijanie wytraca prędkość po ostatnim ruchu kółka."
 
 [actions]
 bind_control = "Przypisz %{name}"

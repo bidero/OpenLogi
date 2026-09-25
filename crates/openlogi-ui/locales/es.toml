@@ -246,6 +246,10 @@ long_press_delay = "Pulsación larga"
 long_press_delay_description = "Cuánto mantener un botón antes de que se active su acción de pulsación larga."
 duration_ms = "%{value} ms"
 reset_gesture_defaults = "Restablecer valores predeterminados"
+smooth_scroll_acceleration = "Aceleración del desplazamiento"
+smooth_scroll_acceleration_description = "Cuánto alarga el desplazamiento suave un giro rápido de la rueda. 0 mantiene un paso fijo."
+smooth_scroll_glide = "Deslizamiento del desplazamiento"
+smooth_scroll_glide_description = "Cuánto tarda el desplazamiento suave en detenerse tras el último giro."
 
 [actions]
 bind_control = "Asignar %{name}"

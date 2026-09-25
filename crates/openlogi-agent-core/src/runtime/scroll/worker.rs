@@ -3,16 +3,18 @@
 use std::collections::HashMap;
 use std::io;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU16, AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use openlogi_core::config::VerticalScrollSensitivity;
+use openlogi_core::config::{
+    SmoothScrollAcceleration, SmoothScrollGlide, VerticalScrollSensitivity,
+};
 use openlogi_core::scroll::ScrollDelta;
 use tracing::warn;
 
-use super::{ScrollEngine, ScrollFrame, ScrollSource, WheelDelta};
+use super::{ScrollEngine, ScrollFeel, ScrollFrame, ScrollSource, WheelDelta};
 use crate::runtime::HidppSessionId;
 
 /// OS-hook callbacks must fail open rather than wait for the worker.
@@ -36,6 +38,9 @@ struct ScrollPreferenceSnapshot {
 /// consistent settings snapshot instead of two independently changing values.
 pub struct ScrollPreferences {
     encoded: AtomicU8,
+    /// Glide (high byte) and acceleration (low byte): the smooth-scroll feel,
+    /// published as one snapshot.
+    feel: AtomicU16,
 }
 
 impl ScrollPreferences {
@@ -44,7 +49,33 @@ impl ScrollPreferences {
     pub fn new(smooth_scroll: bool, vertical_sensitivity: VerticalScrollSensitivity) -> Self {
         Self {
             encoded: AtomicU8::new(Self::encode(smooth_scroll, vertical_sensitivity)),
+            feel: AtomicU16::new(Self::encode_feel(
+                SmoothScrollGlide::DEFAULT,
+                SmoothScrollAcceleration::DEFAULT,
+            )),
         }
+    }
+
+    /// Publish the smooth-scroll glide and acceleration as one snapshot.
+    pub fn publish_feel(&self, glide: SmoothScrollGlide, acceleration: SmoothScrollAcceleration) {
+        self.feel
+            .store(Self::encode_feel(glide, acceleration), Ordering::Relaxed);
+    }
+
+    /// The current smooth-scroll feel for the motion model.
+    pub(crate) fn feel(&self) -> ScrollFeel {
+        let [glide, acceleration] = self.feel.load(Ordering::Relaxed).to_be_bytes();
+        let (Ok(glide), Ok(acceleration)) = (
+            SmoothScrollGlide::try_new(glide),
+            SmoothScrollAcceleration::try_new(acceleration),
+        ) else {
+            unreachable!("ScrollPreferences publishes only validated feel values");
+        };
+        ScrollFeel::new(glide, acceleration)
+    }
+
+    fn encode_feel(glide: SmoothScrollGlide, acceleration: SmoothScrollAcceleration) -> u16 {
+        u16::from_be_bytes([glide.into_inner(), acceleration.into_inner()])
     }
 
     /// Publish both settings as one snapshot.
@@ -400,6 +431,7 @@ fn run_worker(
     emit_direct: &mut impl FnMut(WheelDelta),
 ) {
     let mut engine = ScrollEngine::default();
+    engine.set_feel(preferences.feel());
     // An overflow-cancelled incarnation stays tombstoned so accepted input that
     // was already queued when control overtook the saturated queue is ignored.
     let mut cancellations = OverflowCancellations::new(shared_generation.load(Ordering::Acquire));
@@ -432,6 +464,7 @@ fn run_worker(
         } else if !preferences.smooth_scroll_enabled() {
             engine.cancel_all(emit_smooth);
         }
+        engine.set_feel(preferences.feel());
 
         let command = engine.next_deadline().map_or_else(
             || {
@@ -564,6 +597,16 @@ mod tests {
     }
 
     #[test]
+    fn the_published_feel_reaches_the_motion_model() {
+        let preferences = preferences(true, 14);
+        assert_eq!(preferences.feel(), ScrollFeel::default());
+        let glide = SmoothScrollGlide::MAX;
+        let acceleration = SmoothScrollAcceleration::MIN;
+        preferences.publish_feel(glide, acceleration);
+        assert_eq!(preferences.feel(), ScrollFeel::new(glide, acceleration));
+    }
+
+    #[test]
     fn live_preferences_change_hook_admission_and_output_mode() {
         let preferences = preferences(false, u8::from(VerticalScrollSensitivity::DEFAULT));
         let (input, receiver, _controls) = standalone_input(2, Arc::clone(&preferences));
@@ -653,8 +696,9 @@ mod tests {
         let total = output
             .iter()
             .fold(WheelDelta::ZERO, |sum, frame| sum.plus(frame.delta));
-        assert!(total.x.abs() < f64::EPSILON, "cancelled source emitted");
-        assert!((total.y - 1.0).abs() < f64::EPSILON);
+        // The glide sums many frames, so allow float rounding.
+        assert!(total.x.abs() < 1.0e-9, "cancelled source emitted");
+        assert!((total.y - 1.0).abs() < 1.0e-9);
         assert!(
             output
                 .iter()

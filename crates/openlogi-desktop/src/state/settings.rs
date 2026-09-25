@@ -8,7 +8,8 @@ use gpui_component::ThemeMode;
 use openlogi_core::binding::GestureTuning;
 use openlogi_core::config::{
     AppIcon, AppSettings, Appearance, AssetSourcePreference, DeviceViewMode, MouseProfileTarget,
-    ThumbwheelSensitivity, UiScale, VerticalScrollSensitivity,
+    SmoothScrollAcceleration, SmoothScrollGlide, ThumbwheelSensitivity, UiScale,
+    VerticalScrollSensitivity,
 };
 
 impl AppState {
@@ -348,6 +349,33 @@ impl AppState {
         self.persist_and_reload("vertical scroll sensitivity");
         StateEvent::SettingsChanged.into()
     }
+    /// Set the smooth-scroll acceleration and persist it; the agent publishes
+    /// it to its scroll worker on config reload.
+    pub fn commit_smooth_scroll_acceleration(
+        &mut self,
+        acceleration: SmoothScrollAcceleration,
+    ) -> StateEvents {
+        if self.config.app_settings.smooth_scroll_acceleration == acceleration {
+            return StateEvent::SettingsChanged.into();
+        }
+        self.config
+            .edit(|config| config.app_settings.smooth_scroll_acceleration = acceleration);
+        self.persist_and_reload("smooth scroll acceleration");
+        StateEvent::SettingsChanged.into()
+    }
+
+    /// Set how long a smooth scroll glides and persist it; the agent publishes
+    /// it to its scroll worker on config reload.
+    pub fn commit_smooth_scroll_glide(&mut self, glide: SmoothScrollGlide) -> StateEvents {
+        if self.config.app_settings.smooth_scroll_glide == glide {
+            return StateEvent::SettingsChanged.into();
+        }
+        self.config
+            .edit(|config| config.app_settings.smooth_scroll_glide = glide);
+        self.persist_and_reload("smooth scroll glide");
+        StateEvent::SettingsChanged.into()
+    }
+
     pub fn commit_auto_download_assets(&mut self, enabled: bool) -> StateEvents {
         if self.config.app_settings.auto_download_assets == enabled {
             return StateEvent::SettingsChanged.into();

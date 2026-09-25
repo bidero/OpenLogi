@@ -2,7 +2,9 @@
 //!
 //! Hook callbacks submit typed wheel impulses through [`ScrollInputHandle`]
 //! without blocking. The worker either scales and emits them directly or
-//! evaluates finite smooth motion from absolute timestamps. Pixel-precise input
+//! glides toward the accumulated target: every frame covers a fixed share of
+//! the remaining distance, so bursts merge into one motion that eases out
+//! instead of stopping on a fixed timer. Pixel-precise input
 //! never enters this runtime, so native trackpad and continuous wheel streams
 //! cannot be mixed with wheel ticks.
 
@@ -20,11 +22,58 @@ use openlogi_inject::SmoothScrollPhase;
 
 use crate::runtime::HidppSessionId;
 
-/// Duration of every segment, including a segment restarted by retargeting.
-const ANIMATION_DURATION: Duration = Duration::from_millis(100);
-/// Output cadence. Position is evaluated from absolute time, so delayed wakes
-/// do not slow or lengthen the animation.
+/// Output cadence. Progress is computed from the real time since the last
+/// frame, so delayed wakes do not slow or lengthen the glide.
 const FRAME_PERIOD: Duration = Duration::from_millis(8);
+/// Remaining distance (wheel ticks) below which a glide snaps to its target.
+const SETTLE_TICKS: f64 = 0.02;
+/// Notches closer together than this count as a fast spin for acceleration.
+const ACCELERATION_WINDOW: Duration = Duration::from_millis(150);
+/// Extra distance multiplier at full acceleration for the fastest spin.
+const MAX_ACCELERATION_GAIN: f64 = 4.0;
+
+/// The user's smooth-scroll feel, resolved for the motion model.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ScrollFeel {
+    /// Exponential time constant of the glide, in seconds.
+    time_constant: f64,
+    /// Acceleration strength, `0.0..=1.0`.
+    acceleration: f64,
+}
+
+impl ScrollFeel {
+    /// Resolve the configured glide and acceleration.
+    pub(crate) fn new(
+        glide: openlogi_core::config::SmoothScrollGlide,
+        acceleration: openlogi_core::config::SmoothScrollAcceleration,
+    ) -> Self {
+        // A notch is ~95 % settled after three time constants.
+        Self {
+            time_constant: glide.duration().as_secs_f64() / 3.0,
+            acceleration: acceleration.fraction(),
+        }
+    }
+
+    /// Distance multiplier for a notch arriving `interval` after the last.
+    fn gain(self, interval: Duration) -> f64 {
+        let speed = 1.0 - interval.as_secs_f64() / ACCELERATION_WINDOW.as_secs_f64();
+        1.0 + MAX_ACCELERATION_GAIN * self.acceleration * speed.max(0.0)
+    }
+
+    /// Share of the remaining distance covered in `elapsed`.
+    fn progress(self, elapsed: Duration) -> f64 {
+        1.0 - (-elapsed.as_secs_f64() / self.time_constant).exp()
+    }
+}
+
+impl Default for ScrollFeel {
+    fn default() -> Self {
+        Self::new(
+            openlogi_core::config::SmoothScrollGlide::default(),
+            openlogi_core::config::SmoothScrollAcceleration::default(),
+        )
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct WheelDelta {
@@ -57,6 +106,27 @@ impl WheelDelta {
         Self {
             x: self.x * factor,
             y: self.y * factor,
+        }
+    }
+
+    fn magnitude(self) -> f64 {
+        self.x.abs().max(self.y.abs())
+    }
+
+    /// Drop the remaining motion on any axis the impulse reverses, so a
+    /// change of direction answers at once instead of first finishing the
+    /// old glide.
+    fn reversed_by(self, impulse: Self) -> Self {
+        let keep = |remaining: f64, next: f64| {
+            if remaining * next < 0.0 {
+                0.0
+            } else {
+                remaining
+            }
+        };
+        Self {
+            x: keep(self.x, impulse.x),
+            y: keep(self.y, impulse.y),
         }
     }
 
@@ -125,91 +195,64 @@ impl ScrollSource {
     }
 }
 
-/// A finite cubic smoothstep segment between two cumulative positions.
-struct MotionSegment {
-    from: WheelDelta,
-    target: WheelDelta,
-    started_at: Instant,
-}
-
-impl MotionSegment {
-    fn position_at(&self, at: Instant) -> WheelDelta {
-        let elapsed = at.saturating_duration_since(self.started_at);
-        let progress = (elapsed.as_secs_f64() / ANIMATION_DURATION.as_secs_f64()).clamp(0.0, 1.0);
-        let eased = progress * progress * (3.0 - 2.0 * progress);
-        self.from.plus(self.target.minus(self.from).scale(eased))
-    }
-
-    fn ends_at(&self) -> Instant {
-        self.started_at + ANIMATION_DURATION
-    }
-
-    fn is_complete_at(&self, at: Instant) -> bool {
-        at >= self.ends_at()
-    }
-}
-
-/// A source exists in the state map only while it has a non-zero remaining
-/// target.
+/// One source's glide: the distance still to cover and when it was last
+/// advanced.
 struct ActiveMotion {
-    segment: MotionSegment,
-    emitted: WheelDelta,
+    remaining: WheelDelta,
+    last_frame: Instant,
+    last_impulse: Instant,
     next_frame: Instant,
 }
 
 impl ActiveMotion {
     fn new(impulse: WheelDelta, at: Instant) -> Self {
         Self {
-            segment: MotionSegment {
-                from: WheelDelta::ZERO,
-                target: impulse,
-                started_at: at,
-            },
-            emitted: WheelDelta::ZERO,
+            remaining: impulse,
+            last_frame: at,
+            last_impulse: at,
             next_frame: at + FRAME_PERIOD,
         }
     }
 
-    /// Evaluate the old segment at the impulse timestamp, then restart toward
-    /// the cumulative target.
-    fn retarget(&mut self, impulse: WheelDelta, at: Instant) -> MotionUpdate {
-        let position = self.segment.position_at(at);
-        let target = self.segment.target.plus(impulse);
-        let delta = self.delta_to(position);
-        if target == position {
-            return MotionUpdate::Finished(delta);
+    /// Advance to `at`, then add the (accelerated) impulse to the target.
+    fn retarget(&mut self, impulse: WheelDelta, at: Instant, feel: ScrollFeel) -> MotionUpdate {
+        let covered = self.step_to(at, feel);
+        let gain = feel.gain(at.saturating_duration_since(self.last_impulse));
+        self.last_impulse = at;
+        self.remaining = self
+            .remaining
+            .reversed_by(impulse)
+            .plus(impulse.scale(gain));
+        if self.remaining.magnitude() < SETTLE_TICKS {
+            return MotionUpdate::Finished(covered.plus(self.take_remaining()));
         }
-
-        self.segment = MotionSegment {
-            from: position,
-            target,
-            started_at: at,
-        };
         self.next_frame = at + FRAME_PERIOD;
-        MotionUpdate::Active(delta)
+        MotionUpdate::Active(covered)
     }
 
-    /// Evaluate the position at `at` and report whether the source remains
-    /// active after this update.
-    fn advance(&mut self, at: Instant) -> MotionUpdate {
-        let complete = self.segment.is_complete_at(at);
-        let position = self.segment.position_at(at);
-        let delta = self.delta_to(position);
-        if complete {
-            MotionUpdate::Finished(delta)
-        } else {
-            while self.next_frame <= at {
-                self.next_frame += FRAME_PERIOD;
-            }
-            self.next_frame = self.next_frame.min(self.segment.ends_at());
-            MotionUpdate::Active(delta)
+    /// Advance to `at` and report whether the glide has settled.
+    fn advance(&mut self, at: Instant, feel: ScrollFeel) -> MotionUpdate {
+        let covered = self.step_to(at, feel);
+        if self.remaining.magnitude() < SETTLE_TICKS {
+            return MotionUpdate::Finished(covered.plus(self.take_remaining()));
         }
+        while self.next_frame <= at {
+            self.next_frame += FRAME_PERIOD;
+        }
+        MotionUpdate::Active(covered)
     }
 
-    fn delta_to(&mut self, position: WheelDelta) -> WheelDelta {
-        let delta = position.minus(self.emitted);
-        self.emitted = position;
-        delta
+    /// Cover the share of the remaining distance due since the last frame.
+    fn step_to(&mut self, at: Instant, feel: ScrollFeel) -> WheelDelta {
+        let elapsed = at.saturating_duration_since(self.last_frame);
+        self.last_frame = self.last_frame.max(at);
+        let step = self.remaining.scale(feel.progress(elapsed));
+        self.remaining = self.remaining.minus(step);
+        step
+    }
+
+    fn take_remaining(&mut self) -> WheelDelta {
+        std::mem::replace(&mut self.remaining, WheelDelta::ZERO)
     }
 }
 
@@ -282,9 +325,15 @@ impl OutputStream {
 struct ScrollEngine {
     active: HashMap<ScrollSource, ActiveMotion>,
     output: OutputStream,
+    feel: ScrollFeel,
 }
 
 impl ScrollEngine {
+    /// Use `feel` for every following impulse and frame.
+    fn set_feel(&mut self, feel: ScrollFeel) {
+        self.feel = feel;
+    }
+
     fn impulse(
         &mut self,
         source: ScrollSource,
@@ -292,19 +341,10 @@ impl ScrollEngine {
         at: Instant,
         emit: &mut impl FnMut(ScrollFrame),
     ) {
-        if self
-            .active
-            .get(&source)
-            .is_some_and(|motion| motion.segment.is_complete_at(at))
-            && let Some(mut completed) = self.active.remove(&source)
-        {
-            let update = completed.advance(at);
-            self.emit_update(update, emit);
-        }
-
+        let feel = self.feel;
         let update = match self.active.entry(source) {
             Entry::Occupied(mut entry) => {
-                let update = entry.get_mut().retarget(impulse, at);
+                let update = entry.get_mut().retarget(impulse, at, feel);
                 if update.is_finished() {
                     entry.remove();
                 }
@@ -321,6 +361,7 @@ impl ScrollEngine {
     }
 
     fn advance_due(&mut self, at: Instant, emit: &mut impl FnMut(ScrollFrame)) {
+        let feel = self.feel;
         let due: Vec<ScrollSource> = self
             .active
             .iter()
@@ -331,7 +372,7 @@ impl ScrollEngine {
             let Some(update) = self
                 .active
                 .get_mut(&source)
-                .map(|motion| motion.advance(at))
+                .map(|motion| motion.advance(at, feel))
             else {
                 continue;
             };

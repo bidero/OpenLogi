@@ -246,6 +246,10 @@ long_press_delay = "Long press"
 long_press_delay_description = "How long to hold a button before its long-press action fires."
 duration_ms = "%{value} ms"
 reset_gesture_defaults = "Reset to defaults"
+smooth_scroll_acceleration = "Scroll acceleration"
+smooth_scroll_acceleration_description = "How much a fast wheel spin lengthens smooth scrolling. 0 keeps a fixed step."
+smooth_scroll_glide = "Scroll glide"
+smooth_scroll_glide_description = "How long smooth scrolling takes to slow to a stop after the last wheel notch."
 
 [actions]
 bind_control = "Atribuir %{name}"

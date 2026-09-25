@@ -246,6 +246,10 @@ long_press_delay = "Langes Drücken"
 long_press_delay_description = "Wie lange eine Taste gehalten werden muss, bevor ihre Aktion für langes Drücken ausgelöst wird."
 duration_ms = "%{value} ms"
 reset_gesture_defaults = "Auf Standard zurücksetzen"
+smooth_scroll_acceleration = "Scroll-Beschleunigung"
+smooth_scroll_acceleration_description = "Wie stark schnelles Drehen das sanfte Scrollen verlängert. 0 bedeutet feste Schritte."
+smooth_scroll_glide = "Scroll-Auslauf"
+smooth_scroll_glide_description = "Wie lange sanftes Scrollen nach der letzten Raddrehung ausläuft."
 
 [actions]
 bind_control = "%{name} zuweisen"

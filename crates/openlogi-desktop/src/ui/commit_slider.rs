@@ -13,7 +13,9 @@ use std::rc::Rc;
 use gpui::{App, AppContext as _, Context, Entity, Subscription, Window};
 use gpui_component::slider::{SliderEvent, SliderState};
 use openlogi_core::binding::{LongPressDelay, SwipeDistance, SwipeHold};
-use openlogi_core::config::{ThumbwheelSensitivity, VerticalScrollSensitivity};
+use openlogi_core::config::{
+    SmoothScrollAcceleration, SmoothScrollGlide, ThumbwheelSensitivity, VerticalScrollSensitivity,
+};
 use openlogi_core::hid::{Dpi, SmartShiftThreshold};
 
 /// A value a slider thumb can rest on.
@@ -92,6 +94,8 @@ rounded_slider_unit!(
     Dpi,
     LongPressDelay,
     SmartShiftThreshold,
+    SmoothScrollAcceleration,
+    SmoothScrollGlide,
     SwipeDistance,
     SwipeHold,
     ThumbwheelSensitivity,

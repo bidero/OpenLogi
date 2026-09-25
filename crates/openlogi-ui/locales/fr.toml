@@ -246,6 +246,10 @@ long_press_delay = "Appui long"
 long_press_delay_description = "Durée de maintien d’un bouton avant que son action d’appui long ne se déclenche."
 duration_ms = "%{value} ms"
 reset_gesture_defaults = "Rétablir les valeurs par défaut"
+smooth_scroll_acceleration = "Accélération du défilement"
+smooth_scroll_acceleration_description = "À quel point une rotation rapide allonge le défilement fluide. 0 garde un pas fixe."
+smooth_scroll_glide = "Glissement du défilement"
+smooth_scroll_glide_description = "Durée pendant laquelle le défilement fluide ralentit après le dernier cran."
 
 [actions]
 bind_control = "Attribuer %{name}"

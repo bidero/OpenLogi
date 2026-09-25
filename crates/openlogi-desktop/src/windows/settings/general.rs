@@ -8,7 +8,7 @@ use super::{
 use crate::ui::theme::Typography as _;
 use gpui_base::Button as BaseButton;
 use gpui_component::radio::{Radio, RadioGroup};
-use openlogi_core::config::MouseProfileTarget;
+use openlogi_core::config::{MouseProfileTarget, SmoothScrollAcceleration, SmoothScrollGlide};
 
 use crate::platform::registration::ServiceStatus;
 
@@ -17,6 +17,8 @@ use crate::platform::registration::ServiceStatus;
 pub(super) struct SensitivitySliders {
     pub(super) vertical_scroll: Entity<SliderState>,
     pub(super) thumbwheel: Entity<SliderState>,
+    pub(super) smooth_acceleration: Entity<SliderState>,
+    pub(super) smooth_glide: Entity<SliderState>,
 }
 
 pub(super) fn general_page(
@@ -26,6 +28,8 @@ pub(super) fn general_page(
     let SensitivitySliders {
         vertical_scroll,
         thumbwheel,
+        smooth_acceleration,
+        smooth_glide,
     } = sliders;
     let group = SettingGroup::new()
         .item(mouse_profile_target_item())
@@ -38,6 +42,39 @@ pub(super) fn general_page(
                 }),
             )
             .description(tr!("pointer.vertical_scroll_sensitivity_description")),
+        )
+        .item(
+            SettingItem::new(
+                tr!("pointer.smooth_scroll_acceleration"),
+                SettingField::render(move |_, _, cx| {
+                    let value = SmoothScrollAcceleration::from_rounded(
+                        smooth_acceleration.read(cx).value().start(),
+                    );
+                    sensitivity_field(
+                        &smooth_acceleration,
+                        value.to_string(),
+                        value == SmoothScrollAcceleration::DEFAULT,
+                        cx,
+                    )
+                }),
+            )
+            .description(tr!("pointer.smooth_scroll_acceleration_description")),
+        )
+        .item(
+            SettingItem::new(
+                tr!("pointer.smooth_scroll_glide"),
+                SettingField::render(move |_, _, cx| {
+                    let value =
+                        SmoothScrollGlide::from_rounded(smooth_glide.read(cx).value().start());
+                    sensitivity_field(
+                        &smooth_glide,
+                        value.to_string(),
+                        value == SmoothScrollGlide::DEFAULT,
+                        cx,
+                    )
+                }),
+            )
+            .description(tr!("pointer.smooth_scroll_glide_description")),
         )
         .item(
             SettingItem::new(

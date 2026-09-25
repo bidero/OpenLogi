@@ -246,6 +246,10 @@ long_press_delay = "Долгое нажатие"
 long_press_delay_description = "Сколько держать кнопку, прежде чем сработает действие долгого нажатия."
 duration_ms = "%{value} мс"
 reset_gesture_defaults = "Сбросить по умолчанию"
+smooth_scroll_acceleration = "Ускорение прокрутки"
+smooth_scroll_acceleration_description = "Насколько быстрое вращение колеса удлиняет плавную прокрутку. 0 — фиксированный шаг."
+smooth_scroll_glide = "Инерция прокрутки"
+smooth_scroll_glide_description = "Как долго плавная прокрутка замедляется после последнего щелчка колеса."
 
 [actions]
 bind_control = "Назначить %{name}"

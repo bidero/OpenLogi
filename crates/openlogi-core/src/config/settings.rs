@@ -220,6 +220,12 @@ pub struct AppSettings {
     /// continuous pixel input is never scaled.
     #[serde(default)]
     pub vertical_scroll_sensitivity: VerticalScrollSensitivity,
+    /// How much fast wheel spinning lengthens a smooth scroll.
+    #[serde(default)]
+    pub smooth_scroll_acceleration: SmoothScrollAcceleration,
+    /// How long a smooth scroll takes to glide to a stop.
+    #[serde(default)]
+    pub smooth_scroll_glide: SmoothScrollGlide,
     /// Which app icon the user picked. Applied at launch, and whenever it
     /// changes, by whichever process owns a surface showing one — on macOS the
     /// GUI hands the choice to the Dock and writes it onto the bundle (so the
@@ -358,6 +364,160 @@ impl From<VerticalScrollSensitivity> for f32 {
     }
 }
 
+const ACCELERATION_MAX: u8 = 100;
+const ACCELERATION_DEFAULT: u8 = 30;
+const GLIDE_MIN: u8 = 1;
+const GLIDE_MAX: u8 = 100;
+const GLIDE_DEFAULT: u8 = 40;
+
+/// Round and clamp a floating-point slider value into `min..=max`.
+fn rounded_u8(value: f32, min: u8, max: u8) -> u8 {
+    let value = if value.is_nan() {
+        f32::from(min)
+    } else {
+        value
+    };
+    value
+        .clamp(f32::from(min), f32::from(max))
+        .round()
+        .saturating_as::<u8>()
+}
+
+/// Smooth-scroll acceleration on a `0..=100` scale: how much a fast wheel
+/// spin lengthens the scroll. `0` scrolls a fixed distance per notch.
+#[nutype(
+    const_fn,
+    validate(less_or_equal = ACCELERATION_MAX),
+    derive(
+        Debug,
+        Clone,
+        Copy,
+        PartialEq,
+        Eq,
+        PartialOrd,
+        Ord,
+        TryFrom,
+        Into,
+        Display,
+        Serialize,
+        Deserialize
+    )
+)]
+pub struct SmoothScrollAcceleration(u8);
+
+impl SmoothScrollAcceleration {
+    /// No acceleration.
+    pub const MIN: Self = match Self::try_new(0) {
+        Ok(value) => value,
+        Err(_) => panic!("valid minimum smooth-scroll acceleration"),
+    };
+    /// Strongest acceleration.
+    pub const MAX: Self = match Self::try_new(ACCELERATION_MAX) {
+        Ok(value) => value,
+        Err(_) => panic!("valid maximum smooth-scroll acceleration"),
+    };
+    /// Out-of-the-box acceleration.
+    pub const DEFAULT: Self = match Self::try_new(ACCELERATION_DEFAULT) {
+        Ok(value) => value,
+        Err(_) => panic!("valid default smooth-scroll acceleration"),
+    };
+
+    /// Round and clamp a slider value into the valid range.
+    #[must_use]
+    pub fn from_rounded(value: f32) -> Self {
+        let Ok(value) = Self::try_new(rounded_u8(value, 0, ACCELERATION_MAX)) else {
+            unreachable!("clamped smooth-scroll acceleration is always valid");
+        };
+        value
+    }
+
+    /// The setting as a `0.0..=1.0` fraction.
+    #[must_use]
+    pub fn fraction(self) -> f64 {
+        f64::from(self.into_inner()) / f64::from(ACCELERATION_MAX)
+    }
+}
+
+impl Default for SmoothScrollAcceleration {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+impl From<SmoothScrollAcceleration> for f32 {
+    fn from(value: SmoothScrollAcceleration) -> Self {
+        Self::from(value.into_inner())
+    }
+}
+
+/// Smooth-scroll glide on a `1..=100` scale: how long a scroll takes to
+/// glide to a stop after the last wheel notch.
+#[nutype(
+    const_fn,
+    validate(greater_or_equal = GLIDE_MIN, less_or_equal = GLIDE_MAX),
+    derive(
+        Debug,
+        Clone,
+        Copy,
+        PartialEq,
+        Eq,
+        PartialOrd,
+        Ord,
+        TryFrom,
+        Into,
+        Display,
+        Serialize,
+        Deserialize
+    )
+)]
+pub struct SmoothScrollGlide(u8);
+
+impl SmoothScrollGlide {
+    /// Shortest glide.
+    pub const MIN: Self = match Self::try_new(GLIDE_MIN) {
+        Ok(value) => value,
+        Err(_) => panic!("valid minimum smooth-scroll glide"),
+    };
+    /// Longest glide.
+    pub const MAX: Self = match Self::try_new(GLIDE_MAX) {
+        Ok(value) => value,
+        Err(_) => panic!("valid maximum smooth-scroll glide"),
+    };
+    /// Out-of-the-box glide.
+    pub const DEFAULT: Self = match Self::try_new(GLIDE_DEFAULT) {
+        Ok(value) => value,
+        Err(_) => panic!("valid default smooth-scroll glide"),
+    };
+
+    /// Round and clamp a slider value into the valid range.
+    #[must_use]
+    pub fn from_rounded(value: f32) -> Self {
+        let Ok(value) = Self::try_new(rounded_u8(value, GLIDE_MIN, GLIDE_MAX)) else {
+            unreachable!("clamped smooth-scroll glide is always valid");
+        };
+        value
+    }
+
+    /// Roughly how long a single notch takes to settle: 68 ms at the
+    /// minimum, 380 ms by default, 860 ms at the maximum.
+    #[must_use]
+    pub fn duration(self) -> std::time::Duration {
+        std::time::Duration::from_millis(60 + 8 * u64::from(self.into_inner()))
+    }
+}
+
+impl Default for SmoothScrollGlide {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+impl From<SmoothScrollGlide> for f32 {
+    fn from(value: SmoothScrollGlide) -> Self {
+        Self::from(value.into_inner())
+    }
+}
+
 /// Thumb-wheel responsiveness on OpenLogi's `1..=100` scale.
 #[nutype(
     const_fn,
@@ -439,15 +599,7 @@ impl From<ThumbwheelSensitivity> for i32 {
 }
 
 fn rounded_sensitivity(value: f32) -> u8 {
-    let value = if value.is_nan() {
-        f32::from(SENSITIVITY_MIN)
-    } else {
-        value
-    };
-    value
-        .clamp(f32::from(SENSITIVITY_MIN), f32::from(SENSITIVITY_MAX))
-        .round()
-        .saturating_as::<u8>()
+    rounded_u8(value, SENSITIVITY_MIN, SENSITIVITY_MAX)
 }
 
 impl AppSettings {
@@ -470,6 +622,8 @@ impl Default for AppSettings {
             capture_mouse_events: true,
             smooth_scroll: false,
             vertical_scroll_sensitivity: VerticalScrollSensitivity::DEFAULT,
+            smooth_scroll_acceleration: SmoothScrollAcceleration::DEFAULT,
+            smooth_scroll_glide: SmoothScrollGlide::DEFAULT,
             auto_download_assets: true,
             asset_source: AssetSourcePreference::Automatic,
             language: None,
