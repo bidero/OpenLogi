@@ -471,6 +471,8 @@ pub enum SmoothScrollPhase {
     MomentumChanged,
     /// Final coasting frame, or an interrupted coast.
     MomentumEnded,
+    /// A plain continuous frame outside any gesture: no edge bounce.
+    Unphased,
 }
 
 /// Synthesise one frame of a finite smooth-scroll animation.

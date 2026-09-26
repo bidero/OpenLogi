@@ -250,6 +250,12 @@ smooth_scroll_acceleration = "Aceleración del desplazamiento"
 smooth_scroll_acceleration_description = "Cuánto alarga el desplazamiento suave un giro rápido de la rueda. 0 mantiene un paso fijo."
 smooth_scroll_glide = "Deslizamiento del desplazamiento"
 smooth_scroll_glide_description = "Cuánto tarda el desplazamiento suave en detenerse tras el último giro."
+smooth_scroll_edge_bounce = "Edge bounce"
+smooth_scroll_edge_bounce_description = "Bounce at the top and bottom of a page like a trackpad. Off stops hard at the edge."
+smooth_scroll_touch = "Gesture length"
+smooth_scroll_touch_description = "How long a smooth scroll acts like fingers on a trackpad before it coasts. Longer drags further past the page edge."
+smooth_scroll_pause = "Gesture pause"
+smooth_scroll_pause_description = "How long the wheel must rest before the next notch starts a new gesture. Longer keeps slow scrolling in one glide, with a single bounce."
 
 [actions]
 bind_control = "Asignar %{name}"

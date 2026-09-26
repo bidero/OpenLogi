@@ -41,8 +41,8 @@ pub use settings::LightSettings;
 pub use settings::{
     AppIcon, AppSettings, Appearance, AssetSourcePreference, CameraControls, DeviceViewMode,
     Lighting, MouseProfileTarget, SMARTSHIFT_AUTO_DISENGAGE_DEFAULT, SMARTSHIFT_MIN_AUTO_DISENGAGE,
-    ScrollResolution, SmartShift, SmoothScrollAcceleration, SmoothScrollGlide,
-    ThumbwheelSensitivity, UiScale, VerticalScrollSensitivity, WheelMode,
+    ScrollResolution, SmartShift, SmoothScrollAcceleration, SmoothScrollGlide, SmoothScrollPause,
+    SmoothScrollTouch, ThumbwheelSensitivity, UiScale, VerticalScrollSensitivity, WheelMode,
 };
 
 use crate::binding::Action;

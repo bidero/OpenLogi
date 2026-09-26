@@ -264,10 +264,7 @@ impl Orchestrator {
                     config.app_settings.smooth_scroll,
                     config.app_settings.vertical_scroll_sensitivity,
                 );
-                preferences.publish_feel(
-                    config.app_settings.smooth_scroll_glide,
-                    config.app_settings.smooth_scroll_acceleration,
-                );
+                preferences.publish_feel(&config.app_settings);
                 Arc::new(preferences)
             },
             dpi_cycle: Arc::new(RwLock::new(DpiCycles::default())),
@@ -930,10 +927,9 @@ impl Orchestrator {
             self.config.app_settings.smooth_scroll,
             self.config.app_settings.vertical_scroll_sensitivity,
         );
-        self.shared.scroll_preferences.publish_feel(
-            self.config.app_settings.smooth_scroll_glide,
-            self.config.app_settings.smooth_scroll_acceleration,
-        );
+        self.shared
+            .scroll_preferences
+            .publish_feel(&self.config.app_settings);
         self.observable
             .set_launch_at_login(self.config.app_settings.launch_at_login);
         let retained_overrides: HashSet<String> = self

@@ -2,15 +2,13 @@
 
 use std::collections::HashMap;
 use std::io;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU16, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use openlogi_core::config::{
-    SmoothScrollAcceleration, SmoothScrollGlide, VerticalScrollSensitivity,
-};
+use openlogi_core::config::{AppSettings, VerticalScrollSensitivity};
 use openlogi_core::scroll::ScrollDelta;
 use tracing::warn;
 
@@ -38,9 +36,8 @@ struct ScrollPreferenceSnapshot {
 /// consistent settings snapshot instead of two independently changing values.
 pub struct ScrollPreferences {
     encoded: AtomicU8,
-    /// Glide (high byte) and acceleration (low byte): the smooth-scroll feel,
-    /// published as one snapshot.
-    feel: AtomicU16,
+    /// The smooth-scroll feel, read by the worker only (never the hook).
+    feel: Mutex<ScrollFeel>,
 }
 
 impl ScrollPreferences {
@@ -49,33 +46,24 @@ impl ScrollPreferences {
     pub fn new(smooth_scroll: bool, vertical_sensitivity: VerticalScrollSensitivity) -> Self {
         Self {
             encoded: AtomicU8::new(Self::encode(smooth_scroll, vertical_sensitivity)),
-            feel: AtomicU16::new(Self::encode_feel(
-                SmoothScrollGlide::DEFAULT,
-                SmoothScrollAcceleration::DEFAULT,
-            )),
+            feel: Mutex::new(ScrollFeel::default()),
         }
     }
 
-    /// Publish the smooth-scroll glide and acceleration as one snapshot.
-    pub fn publish_feel(&self, glide: SmoothScrollGlide, acceleration: SmoothScrollAcceleration) {
-        self.feel
-            .store(Self::encode_feel(glide, acceleration), Ordering::Relaxed);
+    /// Publish the smooth-scroll feel from the app settings.
+    pub fn publish_feel(&self, settings: &AppSettings) {
+        let feel = ScrollFeel::new(settings);
+        match self.feel.lock() {
+            Ok(mut current) => *current = feel,
+            Err(poisoned) => *poisoned.into_inner() = feel,
+        }
     }
 
     /// The current smooth-scroll feel for the motion model.
     pub(crate) fn feel(&self) -> ScrollFeel {
-        let [glide, acceleration] = self.feel.load(Ordering::Relaxed).to_be_bytes();
-        let (Ok(glide), Ok(acceleration)) = (
-            SmoothScrollGlide::try_new(glide),
-            SmoothScrollAcceleration::try_new(acceleration),
-        ) else {
-            unreachable!("ScrollPreferences publishes only validated feel values");
-        };
-        ScrollFeel::new(glide, acceleration)
-    }
-
-    fn encode_feel(glide: SmoothScrollGlide, acceleration: SmoothScrollAcceleration) -> u16 {
-        u16::from_be_bytes([glide.into_inner(), acceleration.into_inner()])
+        self.feel
+            .lock()
+            .map_or_else(|poisoned| *poisoned.into_inner(), |feel| *feel)
     }
 
     /// Publish both settings as one snapshot.
@@ -600,10 +588,14 @@ mod tests {
     fn the_published_feel_reaches_the_motion_model() {
         let preferences = preferences(true, 14);
         assert_eq!(preferences.feel(), ScrollFeel::default());
-        let glide = SmoothScrollGlide::MAX;
-        let acceleration = SmoothScrollAcceleration::MIN;
-        preferences.publish_feel(glide, acceleration);
-        assert_eq!(preferences.feel(), ScrollFeel::new(glide, acceleration));
+        let settings = AppSettings {
+            smooth_scroll_glide: openlogi_core::config::SmoothScrollGlide::MAX,
+            smooth_scroll_acceleration: openlogi_core::config::SmoothScrollAcceleration::MIN,
+            smooth_scroll_edge_bounce: false,
+            ..AppSettings::default()
+        };
+        preferences.publish_feel(&settings);
+        assert_eq!(preferences.feel(), ScrollFeel::new(&settings));
     }
 
     #[test]

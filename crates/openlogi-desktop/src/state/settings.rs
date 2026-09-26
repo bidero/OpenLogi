@@ -8,8 +8,8 @@ use gpui_component::ThemeMode;
 use openlogi_core::binding::GestureTuning;
 use openlogi_core::config::{
     AppIcon, AppSettings, Appearance, AssetSourcePreference, DeviceViewMode, MouseProfileTarget,
-    SmoothScrollAcceleration, SmoothScrollGlide, ThumbwheelSensitivity, UiScale,
-    VerticalScrollSensitivity,
+    SmoothScrollAcceleration, SmoothScrollGlide, SmoothScrollPause, SmoothScrollTouch,
+    ThumbwheelSensitivity, UiScale, VerticalScrollSensitivity,
 };
 
 impl AppState {
@@ -373,6 +373,39 @@ impl AppState {
         self.config
             .edit(|config| config.app_settings.smooth_scroll_glide = glide);
         self.persist_and_reload("smooth scroll glide");
+        StateEvent::SettingsChanged.into()
+    }
+
+    /// Set whether smooth scrolling bounces at the content edge.
+    pub fn commit_smooth_scroll_edge_bounce(&mut self, enabled: bool) -> StateEvents {
+        if self.config.app_settings.smooth_scroll_edge_bounce == enabled {
+            return StateEvent::SettingsChanged.into();
+        }
+        self.config
+            .edit(|config| config.app_settings.smooth_scroll_edge_bounce = enabled);
+        self.persist_and_reload("smooth scroll edge bounce");
+        StateEvent::SettingsChanged.into()
+    }
+
+    /// Set how long a smooth scroll acts as a fingers-down gesture.
+    pub fn commit_smooth_scroll_touch(&mut self, touch: SmoothScrollTouch) -> StateEvents {
+        if self.config.app_settings.smooth_scroll_touch == touch {
+            return StateEvent::SettingsChanged.into();
+        }
+        self.config
+            .edit(|config| config.app_settings.smooth_scroll_touch = touch);
+        self.persist_and_reload("smooth scroll touch");
+        StateEvent::SettingsChanged.into()
+    }
+
+    /// Set the wheel pause that starts a new smooth-scroll gesture.
+    pub fn commit_smooth_scroll_pause(&mut self, pause: SmoothScrollPause) -> StateEvents {
+        if self.config.app_settings.smooth_scroll_pause == pause {
+            return StateEvent::SettingsChanged.into();
+        }
+        self.config
+            .edit(|config| config.app_settings.smooth_scroll_pause = pause);
+        self.persist_and_reload("smooth scroll pause");
         StateEvent::SettingsChanged.into()
     }
 

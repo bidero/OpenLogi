@@ -110,6 +110,7 @@ const fn phase_values(phase: SmoothScrollPhase) -> (i64, i64) {
         SmoothScrollPhase::MomentumBegan => (0, 1),
         SmoothScrollPhase::MomentumChanged => (0, 2),
         SmoothScrollPhase::MomentumEnded => (0, 3),
+        SmoothScrollPhase::Unphased => (0, 0),
     }
 }
 

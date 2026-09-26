@@ -226,6 +226,18 @@ pub struct AppSettings {
     /// How long a smooth scroll takes to glide to a stop.
     #[serde(default)]
     pub smooth_scroll_glide: SmoothScrollGlide,
+    /// Whether smooth scrolling bounces at the content edge like a trackpad.
+    /// `false` posts plain continuous scrolls that stop hard at the edge.
+    #[serde(default = "default_true")]
+    pub smooth_scroll_edge_bounce: bool,
+    /// How long a smooth scroll acts as fingers on a trackpad before it
+    /// coasts; longer drags further past the edge.
+    #[serde(default)]
+    pub smooth_scroll_touch: SmoothScrollTouch,
+    /// Wheel pause after which the next notch starts a new scroll gesture
+    /// instead of extending the current glide.
+    #[serde(default)]
+    pub smooth_scroll_pause: SmoothScrollPause,
     /// Which app icon the user picked. Applied at launch, and whenever it
     /// changes, by whichever process owns a surface showing one — on macOS the
     /// GUI hands the choice to the Dock and writes it onto the bundle (so the
@@ -518,6 +530,155 @@ impl From<SmoothScrollGlide> for f32 {
     }
 }
 
+const TOUCH_MAX_MS: u8 = 250;
+const TOUCH_DEFAULT_MS: u8 = 60;
+const PAUSE_MIN_MS: u16 = 20;
+const PAUSE_MAX_MS: u16 = 500;
+const PAUSE_DEFAULT_MS: u16 = 200;
+
+/// How long (ms, `0..=250`) a smooth scroll is posted as fingers on a
+/// trackpad before the rest coasts as momentum.
+#[nutype(
+    const_fn,
+    validate(less_or_equal = TOUCH_MAX_MS),
+    derive(
+        Debug,
+        Clone,
+        Copy,
+        PartialEq,
+        Eq,
+        PartialOrd,
+        Ord,
+        TryFrom,
+        Into,
+        Display,
+        Serialize,
+        Deserialize
+    )
+)]
+pub struct SmoothScrollTouch(u8);
+
+impl SmoothScrollTouch {
+    /// Coast at once.
+    pub const MIN: Self = match Self::try_new(0) {
+        Ok(value) => value,
+        Err(_) => panic!("valid minimum smooth-scroll touch"),
+    };
+    /// Longest touch.
+    pub const MAX: Self = match Self::try_new(TOUCH_MAX_MS) {
+        Ok(value) => value,
+        Err(_) => panic!("valid maximum smooth-scroll touch"),
+    };
+    /// Out-of-the-box touch.
+    pub const DEFAULT: Self = match Self::try_new(TOUCH_DEFAULT_MS) {
+        Ok(value) => value,
+        Err(_) => panic!("valid default smooth-scroll touch"),
+    };
+
+    /// Round and clamp a slider value (milliseconds) into the valid range.
+    #[must_use]
+    pub fn from_rounded(value: f32) -> Self {
+        let Ok(value) = Self::try_new(rounded_u8(value, 0, TOUCH_MAX_MS)) else {
+            unreachable!("clamped smooth-scroll touch is always valid");
+        };
+        value
+    }
+
+    /// The touch as a [`std::time::Duration`].
+    #[must_use]
+    pub fn duration(self) -> std::time::Duration {
+        std::time::Duration::from_millis(u64::from(self.into_inner()))
+    }
+}
+
+impl Default for SmoothScrollTouch {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+impl From<SmoothScrollTouch> for f32 {
+    fn from(value: SmoothScrollTouch) -> Self {
+        Self::from(value.into_inner())
+    }
+}
+
+/// Wheel pause (ms, `20..=500`) that ends a smooth-scroll gesture: the next
+/// notch after it starts a new gesture, and bounces anew at an edge.
+#[nutype(
+    const_fn,
+    validate(greater_or_equal = PAUSE_MIN_MS, less_or_equal = PAUSE_MAX_MS),
+    derive(
+        Debug,
+        Clone,
+        Copy,
+        PartialEq,
+        Eq,
+        PartialOrd,
+        Ord,
+        TryFrom,
+        Into,
+        Display,
+        Serialize,
+        Deserialize
+    )
+)]
+pub struct SmoothScrollPause(u16);
+
+impl SmoothScrollPause {
+    /// Shortest pause.
+    pub const MIN: Self = match Self::try_new(PAUSE_MIN_MS) {
+        Ok(value) => value,
+        Err(_) => panic!("valid minimum smooth-scroll pause"),
+    };
+    /// Longest pause.
+    pub const MAX: Self = match Self::try_new(PAUSE_MAX_MS) {
+        Ok(value) => value,
+        Err(_) => panic!("valid maximum smooth-scroll pause"),
+    };
+    /// Out-of-the-box pause.
+    pub const DEFAULT: Self = match Self::try_new(PAUSE_DEFAULT_MS) {
+        Ok(value) => value,
+        Err(_) => panic!("valid default smooth-scroll pause"),
+    };
+
+    /// Round and clamp a slider value (milliseconds) into the valid range.
+    #[must_use]
+    pub fn from_rounded(value: f32) -> Self {
+        let value = if value.is_nan() {
+            f32::from(PAUSE_MIN_MS)
+        } else {
+            value
+        };
+        let clamped = value
+            .clamp(f32::from(PAUSE_MIN_MS), f32::from(PAUSE_MAX_MS))
+            .round()
+            .saturating_as::<u16>();
+        let Ok(value) = Self::try_new(clamped) else {
+            unreachable!("clamped smooth-scroll pause is always valid");
+        };
+        value
+    }
+
+    /// The pause as a [`std::time::Duration`].
+    #[must_use]
+    pub fn duration(self) -> std::time::Duration {
+        std::time::Duration::from_millis(u64::from(self.into_inner()))
+    }
+}
+
+impl Default for SmoothScrollPause {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+impl From<SmoothScrollPause> for f32 {
+    fn from(value: SmoothScrollPause) -> Self {
+        Self::from(value.into_inner())
+    }
+}
+
 /// Thumb-wheel responsiveness on OpenLogi's `1..=100` scale.
 #[nutype(
     const_fn,
@@ -624,6 +785,9 @@ impl Default for AppSettings {
             vertical_scroll_sensitivity: VerticalScrollSensitivity::DEFAULT,
             smooth_scroll_acceleration: SmoothScrollAcceleration::DEFAULT,
             smooth_scroll_glide: SmoothScrollGlide::DEFAULT,
+            smooth_scroll_edge_bounce: true,
+            smooth_scroll_touch: SmoothScrollTouch::DEFAULT,
+            smooth_scroll_pause: SmoothScrollPause::DEFAULT,
             auto_download_assets: true,
             asset_source: AssetSourcePreference::Automatic,
             language: None,

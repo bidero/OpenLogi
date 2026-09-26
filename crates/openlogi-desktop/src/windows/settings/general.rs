@@ -8,7 +8,10 @@ use super::{
 use crate::ui::theme::Typography as _;
 use gpui_base::Button as BaseButton;
 use gpui_component::radio::{Radio, RadioGroup};
-use openlogi_core::config::{MouseProfileTarget, SmoothScrollAcceleration, SmoothScrollGlide};
+use openlogi_core::config::{
+    MouseProfileTarget, SmoothScrollAcceleration, SmoothScrollGlide, SmoothScrollPause,
+    SmoothScrollTouch,
+};
 
 use crate::platform::registration::ServiceStatus;
 
@@ -19,6 +22,8 @@ pub(super) struct SensitivitySliders {
     pub(super) thumbwheel: Entity<SliderState>,
     pub(super) smooth_acceleration: Entity<SliderState>,
     pub(super) smooth_glide: Entity<SliderState>,
+    pub(super) smooth_touch: Entity<SliderState>,
+    pub(super) smooth_pause: Entity<SliderState>,
 }
 
 pub(super) fn general_page(
@@ -30,6 +35,8 @@ pub(super) fn general_page(
         thumbwheel,
         smooth_acceleration,
         smooth_glide,
+        smooth_touch,
+        smooth_pause,
     } = sliders;
     let group = SettingGroup::new()
         .item(mouse_profile_target_item())
@@ -76,6 +83,9 @@ pub(super) fn general_page(
             )
             .description(tr!("pointer.smooth_scroll_glide_description")),
         )
+        .item(smooth_scroll_edge_bounce_item())
+        .item(smooth_scroll_touch_item(smooth_touch))
+        .item(smooth_scroll_pause_item(smooth_pause))
         .item(
             SettingItem::new(
                 tr!("pointer.thumb_wheel_sensitivity"),
@@ -173,6 +183,55 @@ fn smooth_scrolling_item() -> SettingItem {
         ),
     )
     .description(tr!("pointer.smooth_scrolling_description"))
+}
+
+fn smooth_scroll_edge_bounce_item() -> SettingItem {
+    SettingItem::new(
+        tr!("pointer.smooth_scroll_edge_bounce"),
+        SettingField::switch(
+            |cx| AppState::try_read(cx).is_none_or(|s| s.app_settings().smooth_scroll_edge_bounce),
+            |enabled, cx| {
+                AppState::apply(cx, |state| state.commit_smooth_scroll_edge_bounce(enabled));
+            },
+        ),
+    )
+    .description(tr!("pointer.smooth_scroll_edge_bounce_description"))
+}
+
+fn smooth_scroll_touch_item(slider: Entity<SliderState>) -> SettingItem {
+    SettingItem::new(
+        tr!("pointer.smooth_scroll_touch"),
+        SettingField::render(move |_, _, cx| {
+            let value = SmoothScrollTouch::from_rounded(slider.read(cx).value().start());
+            sensitivity_field(
+                &slider,
+                milliseconds(value.into_inner().into()),
+                value == SmoothScrollTouch::DEFAULT,
+                cx,
+            )
+        }),
+    )
+    .description(tr!("pointer.smooth_scroll_touch_description"))
+}
+
+fn smooth_scroll_pause_item(slider: Entity<SliderState>) -> SettingItem {
+    SettingItem::new(
+        tr!("pointer.smooth_scroll_pause"),
+        SettingField::render(move |_, _, cx| {
+            let value = SmoothScrollPause::from_rounded(slider.read(cx).value().start());
+            sensitivity_field(
+                &slider,
+                milliseconds(value.into_inner()),
+                value == SmoothScrollPause::DEFAULT,
+                cx,
+            )
+        }),
+    )
+    .description(tr!("pointer.smooth_scroll_pause_description"))
+}
+
+fn milliseconds(value: u16) -> String {
+    tr!("pointer.duration_ms", value => value.to_string()).to_string()
 }
 
 fn thumbwheel_sensitivity_field(slider: &Entity<SliderState>, cx: &mut App) -> gpui::Div {

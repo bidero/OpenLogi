@@ -250,6 +250,12 @@ smooth_scroll_acceleration = "Przyspieszenie przewijania"
 smooth_scroll_acceleration_description = "Jak bardzo szybkie kręcenie kółkiem wydłuża płynne przewijanie. 0 to stały krok."
 smooth_scroll_glide = "Płynność przewijania"
 smooth_scroll_glide_description = "Jak długo płynne przewijanie wytraca prędkość po ostatnim ruchu kółka."
+smooth_scroll_edge_bounce = "Odbicie od krawędzi"
+smooth_scroll_edge_bounce_description = "Odbija na początku i końcu strony jak trackpad. Wyłączone zatrzymuje twardo na krawędzi."
+smooth_scroll_touch = "Długość gestu"
+smooth_scroll_touch_description = "Jak długo płynne przewijanie działa jak palce na trackpadzie, zanim przejdzie w rozpęd. Dłużej ciągnie dalej za krawędź strony."
+smooth_scroll_pause = "Przerwa między gestami"
+smooth_scroll_pause_description = "Jak długo kółko musi stać, by kolejny ząbek zaczął nowy gest. Dłużej łączy wolne przewijanie w jeden ślizg z jednym odbiciem."
 
 [actions]
 bind_control = "Przypisz %{name}"

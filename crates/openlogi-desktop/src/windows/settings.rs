@@ -35,7 +35,8 @@ pub(super) use gpui_updater::{UpdateStatus, Updater};
 pub(super) use openlogi_core::brand::{HELP_URL, RELEASES_URL, REPO_URL};
 pub(super) use openlogi_core::config::{
     Appearance, AssetSourcePreference, SmoothScrollAcceleration, SmoothScrollGlide,
-    ThumbwheelSensitivity, UiScale, VerticalScrollSensitivity,
+    SmoothScrollPause, SmoothScrollTouch, ThumbwheelSensitivity, UiScale,
+    VerticalScrollSensitivity,
 };
 
 pub(super) use crate::app::menu::{CloseWindow, Minimize, Zoom};
@@ -127,6 +128,8 @@ pub struct SettingsView {
     vertical_scroll_sensitivity: CommitSlider<VerticalScrollSensitivity>,
     smooth_scroll_acceleration: CommitSlider<SmoothScrollAcceleration>,
     smooth_scroll_glide: CommitSlider<SmoothScrollGlide>,
+    smooth_scroll_touch: CommitSlider<SmoothScrollTouch>,
+    smooth_scroll_pause: CommitSlider<SmoothScrollPause>,
     /// Shared app-wide updater, surfaced on the Updates page. A launch-time
     /// check result is already visible when the window opens.
     updater: Entity<Updater>,
@@ -222,8 +225,6 @@ impl SettingsView {
 
         let thumbwheel_sensitivity = Self::thumbwheel_sensitivity_slider(cx);
         let vertical_scroll_sensitivity = Self::vertical_scroll_sensitivity_slider(cx);
-        let smooth_scroll_acceleration = Self::smooth_scroll_acceleration_slider(cx);
-        let smooth_scroll_glide = Self::smooth_scroll_glide_slider(cx);
 
         // Poll the agent's live event monitor while this window is open. The task
         // is held in the view, so closing Settings drops it, polling stops, and
@@ -267,8 +268,10 @@ impl SettingsView {
             asset_source_select,
             thumbwheel_sensitivity,
             vertical_scroll_sensitivity,
-            smooth_scroll_acceleration,
-            smooth_scroll_glide,
+            smooth_scroll_acceleration: Self::smooth_scroll_acceleration_slider(cx),
+            smooth_scroll_glide: Self::smooth_scroll_glide_slider(cx),
+            smooth_scroll_touch: Self::smooth_scroll_touch_slider(cx),
+            smooth_scroll_pause: Self::smooth_scroll_pause_slider(cx),
             updater,
             updater_obs,
             copied: false,
@@ -370,6 +373,36 @@ impl SettingsView {
         )
     }
 
+    /// The smooth-scroll touch slider, committed once it is released.
+    fn smooth_scroll_touch_slider(cx: &mut Context<Self>) -> CommitSlider<SmoothScrollTouch> {
+        let current = AppState::try_read(cx).map_or(SmoothScrollTouch::DEFAULT, |state| {
+            state.app_settings().smooth_scroll_touch
+        });
+        CommitSlider::new(
+            SliderRange::new(SmoothScrollTouch::MIN, SmoothScrollTouch::MAX).step(10.),
+            current,
+            cx,
+            |_, touch, cx| {
+                AppState::apply(cx, |state| state.commit_smooth_scroll_touch(touch));
+            },
+        )
+    }
+
+    /// The smooth-scroll gesture-pause slider, committed once it is released.
+    fn smooth_scroll_pause_slider(cx: &mut Context<Self>) -> CommitSlider<SmoothScrollPause> {
+        let current = AppState::try_read(cx).map_or(SmoothScrollPause::DEFAULT, |state| {
+            state.app_settings().smooth_scroll_pause
+        });
+        CommitSlider::new(
+            SliderRange::new(SmoothScrollPause::MIN, SmoothScrollPause::MAX).step(10.),
+            current,
+            cx,
+            |_, pause, cx| {
+                AppState::apply(cx, |state| state.commit_smooth_scroll_pause(pause));
+            },
+        )
+    }
+
     fn on_language_select(
         &mut self,
         _: &Entity<SelectState<Vec<language::LanguageOption>>>,
@@ -461,11 +494,13 @@ impl Render for SettingsView {
         // these independently owned sliders so neither can keep presenting the
         // rejected value after that rollback.
         if let Some(settings) = AppState::try_read(cx).map(AppState::app_settings) {
-            let (vertical_scroll, thumbwheel, acceleration, glide) = (
+            let (vertical_scroll, thumbwheel, acceleration, glide, touch, pause) = (
                 settings.vertical_scroll_sensitivity,
                 settings.thumbwheel_sensitivity,
                 settings.smooth_scroll_acceleration,
                 settings.smooth_scroll_glide,
+                settings.smooth_scroll_touch,
+                settings.smooth_scroll_pause,
             );
             self.vertical_scroll_sensitivity
                 .sync(vertical_scroll, window, cx);
@@ -473,6 +508,8 @@ impl Render for SettingsView {
             self.smooth_scroll_acceleration
                 .sync(acceleration, window, cx);
             self.smooth_scroll_glide.sync(glide, window, cx);
+            self.smooth_scroll_touch.sync(touch, window, cx);
+            self.smooth_scroll_pause.sync(pause, window, cx);
         }
         let pal = theme::palette(cx);
         let view = cx.entity();
@@ -499,6 +536,8 @@ impl Render for SettingsView {
                     thumbwheel: self.thumbwheel_sensitivity.slider().clone(),
                     smooth_acceleration: self.smooth_scroll_acceleration.slider().clone(),
                     smooth_glide: self.smooth_scroll_glide.slider().clone(),
+                    smooth_touch: self.smooth_scroll_touch.slider().clone(),
+                    smooth_pause: self.smooth_scroll_pause.slider().clone(),
                 },
                 self.registration_status,
             ))

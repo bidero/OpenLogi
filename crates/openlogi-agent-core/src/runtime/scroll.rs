@@ -31,12 +31,6 @@ const SETTLE_TICKS: f64 = 0.02;
 const ACCELERATION_WINDOW: Duration = Duration::from_millis(150);
 /// Extra distance multiplier at full acceleration for the fastest spin.
 const MAX_ACCELERATION_GAIN: f64 = 4.0;
-/// Wheel pause after which the rest of a glide coasts as momentum.
-const TOUCH_RELEASE: Duration = Duration::from_millis(40);
-/// Longest fingers-down gesture. A free spin keeps notches coming, so its
-/// glide coasts after this even while the wheel still turns; apps then bound
-/// the edge overscroll instead of dragging the page away.
-const MAX_TOUCH: Duration = Duration::from_millis(60);
 
 /// The user's smooth-scroll feel, resolved for the motion model.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -45,18 +39,26 @@ pub(crate) struct ScrollFeel {
     time_constant: f64,
     /// Acceleration strength, `0.0..=1.0`.
     acceleration: f64,
+    /// Longest fingers-down part of a gesture before the glide coasts. A
+    /// free spin keeps notches coming, so it coasts after this even while
+    /// the wheel still turns; apps then bound the edge overscroll.
+    touch: Duration,
+    /// Wheel pause after which the next notch starts a new gesture.
+    pause: Duration,
+    /// Whether frames carry trackpad phases (edge bounce) at all.
+    bounce: bool,
 }
 
 impl ScrollFeel {
-    /// Resolve the configured glide and acceleration.
-    pub(crate) fn new(
-        glide: openlogi_core::config::SmoothScrollGlide,
-        acceleration: openlogi_core::config::SmoothScrollAcceleration,
-    ) -> Self {
+    /// Resolve the configured smooth-scroll feel.
+    pub(crate) fn new(settings: &openlogi_core::config::AppSettings) -> Self {
         // A notch is ~95 % settled after three time constants.
         Self {
-            time_constant: glide.duration().as_secs_f64() / 3.0,
-            acceleration: acceleration.fraction(),
+            time_constant: settings.smooth_scroll_glide.duration().as_secs_f64() / 3.0,
+            acceleration: settings.smooth_scroll_acceleration.fraction(),
+            touch: settings.smooth_scroll_touch.duration(),
+            pause: settings.smooth_scroll_pause.duration(),
+            bounce: settings.smooth_scroll_edge_bounce,
         }
     }
 
@@ -74,10 +76,7 @@ impl ScrollFeel {
 
 impl Default for ScrollFeel {
     fn default() -> Self {
-        Self::new(
-            openlogi_core::config::SmoothScrollGlide::default(),
-            openlogi_core::config::SmoothScrollAcceleration::default(),
-        )
+        Self::new(&openlogi_core::config::AppSettings::default())
     }
 }
 
@@ -280,9 +279,8 @@ impl MotionUpdate {
 /// pair multiple synthetic gestures; all distances therefore share this single
 /// balanced lifecycle.
 ///
-/// While notches keep arriving the output is a "fingers down" gesture; once
-/// the wheel pauses for [`TOUCH_RELEASE`] that gesture ends and the rest of
-/// the glide coasts as momentum, as after a trackpad lift-off. Applications
+/// A gesture starts "fingers down"; after [`ScrollFeel::touch`] it ends and
+/// the rest of the glide coasts as momentum, as after a trackpad lift-off. Applications
 /// rubber-band a fingers-down gesture past the content edge for as long as it
 /// lasts, but bounce a momentum coast back briefly.
 #[derive(Default)]
@@ -312,7 +310,7 @@ impl OutputStream {
     fn progress(
         &mut self,
         delta: WheelDelta,
-        released: bool,
+        touch: Duration,
         at: Instant,
         emit: &mut impl FnMut(ScrollFrame),
     ) {
@@ -324,9 +322,7 @@ impl OutputStream {
                 *self = Self::Touching { since: at };
                 SmoothScrollPhase::Began
             }
-            Self::Touching { since }
-                if released || at.saturating_duration_since(*since) >= MAX_TOUCH =>
-            {
+            Self::Touching { since } if at.saturating_duration_since(*since) >= touch => {
                 emit(ScrollFrame::new(WheelDelta::ZERO, SmoothScrollPhase::Ended));
                 *self = Self::Coasting;
                 SmoothScrollPhase::MomentumBegan
@@ -384,6 +380,18 @@ impl ScrollEngine {
         self.feel = feel;
     }
 
+    /// Hand a frame to `emit`, stripped of its phases when the edge bounce
+    /// is off: plain continuous scrolls stop hard at the content edge.
+    fn sink(bounce: bool, emit: &mut impl FnMut(ScrollFrame)) -> impl FnMut(ScrollFrame) {
+        move |frame: ScrollFrame| {
+            if bounce {
+                emit(frame);
+            } else if !frame.delta.is_zero() {
+                emit(ScrollFrame::new(frame.delta, SmoothScrollPhase::Unphased));
+            }
+        }
+    }
+
     fn impulse(
         &mut self,
         source: ScrollSource,
@@ -394,10 +402,10 @@ impl ScrollEngine {
         let feel = self.feel;
         let new_burst = self
             .last_impulse
-            .is_none_or(|last| at.saturating_duration_since(last) >= TOUCH_RELEASE);
+            .is_none_or(|last| at.saturating_duration_since(last) >= feel.pause);
         self.last_impulse = Some(at);
         if new_burst {
-            self.output.touch(emit);
+            self.output.touch(&mut Self::sink(feel.bounce, emit));
         }
         let update = match self.active.entry(source) {
             Entry::Occupied(mut entry) => {
@@ -446,13 +454,13 @@ impl ScrollEngine {
 
     fn cancel_source(&mut self, source: &ScrollSource, emit: &mut impl FnMut(ScrollFrame)) {
         if self.active.remove(source).is_some() && self.active.is_empty() {
-            self.output.cancel(emit);
+            self.output.cancel(&mut Self::sink(self.feel.bounce, emit));
         }
     }
 
     fn cancel_all(&mut self, emit: &mut impl FnMut(ScrollFrame)) {
         self.active.clear();
-        self.output.cancel(emit);
+        self.output.cancel(&mut Self::sink(self.feel.bounce, emit));
     }
 
     fn emit_update(
@@ -461,15 +469,13 @@ impl ScrollEngine {
         at: Instant,
         emit: &mut impl FnMut(ScrollFrame),
     ) {
-        let released = self
-            .last_impulse
-            .is_none_or(|last| at.saturating_duration_since(last) >= TOUCH_RELEASE);
+        let mut emit = Self::sink(self.feel.bounce, emit);
         match update {
             MotionUpdate::Finished(delta) if self.active.is_empty() => {
-                self.output.finish(delta, emit);
+                self.output.finish(delta, &mut emit);
             }
             MotionUpdate::Active(delta) | MotionUpdate::Finished(delta) => {
-                self.output.progress(delta, released, at, emit);
+                self.output.progress(delta, self.feel.touch, at, &mut emit);
             }
         }
     }

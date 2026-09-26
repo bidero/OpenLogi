@@ -47,6 +47,9 @@ fn engine_with(acceleration: f64) -> ScrollEngine {
     engine.set_feel(ScrollFeel {
         time_constant: 0.1,
         acceleration,
+        touch: ms(60),
+        pause: ms(40),
+        bounce: true,
     });
     engine
 }
@@ -427,4 +430,61 @@ fn a_continuous_spin_coasts_after_a_short_touch() {
         "touch lasts only a few frames: {last_touch}"
     );
     assert_delta(cumulative(&frames), wheel(0.0, 34.0));
+}
+
+#[test]
+fn without_edge_bounce_every_frame_is_unphased() {
+    let base = Instant::now();
+    let mut engine = engine();
+    engine.set_feel(ScrollFeel {
+        bounce: false,
+        ..engine.feel
+    });
+    let mut frames = Vec::new();
+    engine.impulse(source(), wheel(0.0, 1.0), base, &mut |frame| {
+        frames.push(frame);
+    });
+    for millis in (8..=200).step_by(8) {
+        engine.advance_due(base + ms(millis), &mut |frame| frames.push(frame));
+    }
+    engine.cancel_all(&mut |frame| frames.push(frame));
+
+    assert!(!frames.is_empty());
+    assert!(
+        frames
+            .iter()
+            .all(|frame| frame.phase == SmoothScrollPhase::Unphased && !frame.delta.is_zero())
+    );
+}
+
+#[test]
+fn a_longer_pause_setting_keeps_slow_notches_in_one_coast() {
+    let base = Instant::now();
+    let mut engine = engine();
+    engine.set_feel(ScrollFeel {
+        pause: ms(200),
+        ..engine.feel
+    });
+    let mut frames = Vec::new();
+    for millis in (0..=1600).step_by(4) {
+        let at = base + ms(millis);
+        if millis % 120 == 0 && millis <= 480 {
+            engine.impulse(source(), wheel(0.0, 1.0), at, &mut |frame| {
+                frames.push(frame);
+            });
+        }
+        engine.advance_due(at, &mut |frame| frames.push(frame));
+    }
+    assert_eq!(
+        phases(&frames),
+        [
+            Began,
+            Changed,
+            Ended,
+            MomentumBegan,
+            MomentumChanged,
+            MomentumEnded
+        ],
+        "slow notches extend one coast instead of bouncing again"
+    );
 }

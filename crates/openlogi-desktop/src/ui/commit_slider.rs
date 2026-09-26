@@ -14,7 +14,8 @@ use gpui::{App, AppContext as _, Context, Entity, Subscription, Window};
 use gpui_component::slider::{SliderEvent, SliderState};
 use openlogi_core::binding::{LongPressDelay, SwipeDistance, SwipeHold};
 use openlogi_core::config::{
-    SmoothScrollAcceleration, SmoothScrollGlide, ThumbwheelSensitivity, VerticalScrollSensitivity,
+    SmoothScrollAcceleration, SmoothScrollGlide, SmoothScrollPause, SmoothScrollTouch,
+    ThumbwheelSensitivity, VerticalScrollSensitivity,
 };
 use openlogi_core::hid::{Dpi, SmartShiftThreshold};
 
@@ -96,6 +97,8 @@ rounded_slider_unit!(
     SmartShiftThreshold,
     SmoothScrollAcceleration,
     SmoothScrollGlide,
+    SmoothScrollPause,
+    SmoothScrollTouch,
     SwipeDistance,
     SwipeHold,
     ThumbwheelSensitivity,
