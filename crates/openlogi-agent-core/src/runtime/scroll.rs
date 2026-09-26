@@ -33,6 +33,10 @@ const ACCELERATION_WINDOW: Duration = Duration::from_millis(150);
 const MAX_ACCELERATION_GAIN: f64 = 4.0;
 /// Wheel pause after which the rest of a glide coasts as momentum.
 const TOUCH_RELEASE: Duration = Duration::from_millis(40);
+/// Longest fingers-down gesture. A free spin keeps notches coming, so its
+/// glide coasts after this even while the wheel still turns; apps then bound
+/// the edge overscroll instead of dragging the page away.
+const MAX_TOUCH: Duration = Duration::from_millis(60);
 
 /// The user's smooth-scroll feel, resolved for the motion model.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -285,13 +289,16 @@ impl MotionUpdate {
 enum OutputStream {
     #[default]
     Idle,
-    Touching,
+    Touching {
+        since: Instant,
+    },
     Coasting,
 }
 
 impl OutputStream {
-    /// A new notch arrived: a coast in progress stops, so the notch starts a
-    /// fresh gesture instead of extending the momentum.
+    /// A notch after a wheel pause arrived: a coast in progress stops, so the
+    /// notch starts a fresh gesture. Notches of a continuing spin instead
+    /// extend the coast.
     fn touch(&mut self, emit: &mut impl FnMut(ScrollFrame)) {
         if matches!(self, Self::Coasting) {
             emit(ScrollFrame::new(
@@ -302,21 +309,29 @@ impl OutputStream {
         }
     }
 
-    fn progress(&mut self, delta: WheelDelta, released: bool, emit: &mut impl FnMut(ScrollFrame)) {
+    fn progress(
+        &mut self,
+        delta: WheelDelta,
+        released: bool,
+        at: Instant,
+        emit: &mut impl FnMut(ScrollFrame),
+    ) {
         if delta.is_zero() {
             return;
         }
         let phase = match self {
             Self::Idle => {
-                *self = Self::Touching;
+                *self = Self::Touching { since: at };
                 SmoothScrollPhase::Began
             }
-            Self::Touching if released => {
+            Self::Touching { since }
+                if released || at.saturating_duration_since(*since) >= MAX_TOUCH =>
+            {
                 emit(ScrollFrame::new(WheelDelta::ZERO, SmoothScrollPhase::Ended));
                 *self = Self::Coasting;
                 SmoothScrollPhase::MomentumBegan
             }
-            Self::Touching => SmoothScrollPhase::Changed,
+            Self::Touching { .. } => SmoothScrollPhase::Changed,
             Self::Coasting => SmoothScrollPhase::MomentumChanged,
         };
         emit(ScrollFrame::new(delta, phase));
@@ -328,7 +343,7 @@ impl OutputStream {
                 emit(ScrollFrame::new(delta, SmoothScrollPhase::Began));
                 emit(ScrollFrame::new(WheelDelta::ZERO, SmoothScrollPhase::Ended));
             }
-            Self::Touching => emit(ScrollFrame::new(delta, SmoothScrollPhase::Ended)),
+            Self::Touching { .. } => emit(ScrollFrame::new(delta, SmoothScrollPhase::Ended)),
             Self::Coasting => emit(ScrollFrame::new(delta, SmoothScrollPhase::MomentumEnded)),
             Self::Idle => {}
         }
@@ -337,7 +352,7 @@ impl OutputStream {
 
     fn cancel(&mut self, emit: &mut impl FnMut(ScrollFrame)) {
         match self {
-            Self::Touching => emit(ScrollFrame::new(
+            Self::Touching { .. } => emit(ScrollFrame::new(
                 WheelDelta::ZERO,
                 SmoothScrollPhase::Cancelled,
             )),
@@ -377,8 +392,13 @@ impl ScrollEngine {
         emit: &mut impl FnMut(ScrollFrame),
     ) {
         let feel = self.feel;
+        let new_burst = self
+            .last_impulse
+            .is_none_or(|last| at.saturating_duration_since(last) >= TOUCH_RELEASE);
         self.last_impulse = Some(at);
-        self.output.touch(emit);
+        if new_burst {
+            self.output.touch(emit);
+        }
         let update = match self.active.entry(source) {
             Entry::Occupied(mut entry) => {
                 let update = entry.get_mut().retarget(impulse, at, feel);
@@ -449,7 +469,7 @@ impl ScrollEngine {
                 self.output.finish(delta, emit);
             }
             MotionUpdate::Active(delta) | MotionUpdate::Finished(delta) => {
-                self.output.progress(delta, released, emit);
+                self.output.progress(delta, released, at, emit);
             }
         }
     }

@@ -389,3 +389,42 @@ fn a_notch_during_the_coast_starts_a_new_gesture() {
     );
     assert_delta(cumulative(&frames), wheel(0.0, 2.0));
 }
+
+#[test]
+fn a_continuous_spin_coasts_after_a_short_touch() {
+    let base = Instant::now();
+    let mut engine = engine();
+    let mut frames = Vec::new();
+    for millis in (0..=400).step_by(4) {
+        let at = base + ms(millis);
+        if millis % 12 == 0 {
+            engine.impulse(source(), wheel(0.0, 1.0), at, &mut |frame| {
+                frames.push(frame)
+            });
+        }
+        engine.advance_due(at, &mut |frame| frames.push(frame));
+    }
+    engine.advance_due(base + SETTLED, &mut |frame| frames.push(frame));
+
+    assert_eq!(
+        phases(&frames),
+        [
+            Began,
+            Changed,
+            Ended,
+            MomentumBegan,
+            MomentumChanged,
+            MomentumEnded
+        ],
+        "the spin keeps coasting instead of restarting gestures"
+    );
+    let last_touch = frames
+        .iter()
+        .rposition(|frame| frame.phase == Ended)
+        .expect("touch ends");
+    assert!(
+        last_touch < 12,
+        "touch lasts only a few frames: {last_touch}"
+    );
+    assert_delta(cumulative(&frames), wheel(0.0, 34.0));
+}
