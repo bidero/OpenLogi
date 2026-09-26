@@ -399,7 +399,7 @@ fn a_continuous_spin_coasts_after_a_short_touch() {
         let at = base + ms(millis);
         if millis % 12 == 0 {
             engine.impulse(source(), wheel(0.0, 1.0), at, &mut |frame| {
-                frames.push(frame)
+                frames.push(frame);
             });
         }
         engine.advance_due(at, &mut |frame| frames.push(frame));
