@@ -38,6 +38,7 @@ mod browser;
     reason = "the private CoreDockSendNotification SPI is only reachable via dlopen/dlsym FFI"
 )]
 mod dock;
+mod magnify;
 mod scroll;
 /// macOS Space switching actions.
 ///
@@ -56,6 +57,7 @@ mod tests;
 use app_services::symbol as app_services_symbol;
 pub(super) use browser::ax_browser_navigate;
 use dock::{app_expose, launchpad, mission_control, show_desktop};
+pub(super) use magnify::post_magnify;
 use scroll::dispatch_scroll;
 pub(super) use scroll::{post_scroll, post_smooth_scroll};
 use symbolic_hotkey::{next_desktop, previous_desktop};
@@ -168,6 +170,8 @@ fn dispatch_native(native: NativeAction) {
         // sleepnow` works for the console user without privileges.
         NativeAction::Sleep => sleep_system(),
         NativeAction::SmartZoom => smart_zoom(),
+        NativeAction::ZoomIn => magnify::zoom_step(1.0),
+        NativeAction::ZoomOut => magnify::zoom_step(-1.0),
     }
 }
 

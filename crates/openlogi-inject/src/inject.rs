@@ -448,6 +448,24 @@ pub fn post_scroll(delta: ScrollDelta) {
     }
 }
 
+/// Add one continuous zoom increment, like a trackpad pinch: positive zooms
+/// in, negative out. Consecutive calls form one pinch gesture that ends on
+/// its own when they stop. macOS only; other platforms skip it. Non-finite
+/// input is rejected at this I/O boundary.
+pub fn post_magnify(magnification: f64) {
+    if !magnification.is_finite() {
+        return;
+    }
+    cfg_select! {
+        target_os = "macos" => {
+            macos::post_magnify(magnification);
+        }
+        _ => {
+            let _ = magnification;
+        }
+    }
+}
+
 /// Lifecycle phase of one synthetic smooth-scroll frame.
 ///
 /// macOS forwards this state to the scroll-wheel event so applications see a

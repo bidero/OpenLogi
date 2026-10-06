@@ -136,8 +136,10 @@ fn dispatch_native(native: NativeAction) {
         NativeAction::Sleep => {
             tracing::debug!("Sleep has no Windows synthesis yet — action skipped");
         }
-        NativeAction::SmartZoom => {
-            tracing::debug!("Smart Zoom is a macOS trackpad gesture — action skipped");
+        NativeAction::SmartZoom | NativeAction::ZoomIn | NativeAction::ZoomOut => {
+            tracing::debug!(
+                "Smart Zoom and pinch zoom are macOS trackpad gestures — action skipped"
+            );
         }
     }
 }

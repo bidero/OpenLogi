@@ -250,6 +250,7 @@ impl InputDispatcher {
         ) {
             WheelOutput::Idle => {}
             WheelOutput::Scroll(delta) => self.outputs.post_scroll(session, delta),
+            WheelOutput::Zoom(magnification) => openlogi_inject::post_magnify(magnification),
             WheelOutput::FireAction => {
                 debug!(key, ?button, action = %action.label(), "thumb wheel → action");
                 self.outputs.actions.dispatch_pointer_action(

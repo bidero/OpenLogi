@@ -360,3 +360,70 @@ fn stale_custom_progress_decays() {
         WheelOutput::FireAction
     );
 }
+
+fn zoom(output: WheelOutput) -> f64 {
+    let WheelOutput::Zoom(magnification) = output else {
+        panic!("expected a pinch increment");
+    };
+    magnification
+}
+
+#[test]
+fn zoom_actions_pinch_continuously_in_their_own_direction() {
+    let mut direction = WheelDirection::default();
+    let now = Instant::now();
+    let scale = unscaled(ThumbwheelSensitivity::DEFAULT);
+
+    assert_distance(
+        zoom(direction.advance(&Action::ZoomIn, 2, scale, now)),
+        2.0 * ZOOM_PER_TICK,
+    );
+    assert_distance(
+        zoom(direction.advance(&Action::ZoomOut, 3, scale, now)),
+        -3.0 * ZOOM_PER_TICK,
+    );
+}
+
+#[test]
+fn zoom_follows_the_thumb_wheel_sensitivity_and_resolution() {
+    let mut direction = WheelDirection::default();
+    let now = Instant::now();
+    let doubled = ThumbwheelSensitivity::from_rounded(28.0);
+
+    let plain = zoom(direction.advance(
+        &Action::ZoomIn,
+        1,
+        unscaled(ThumbwheelSensitivity::DEFAULT),
+        now,
+    ));
+    let sensitive = zoom(direction.advance(&Action::ZoomIn, 1, unscaled(doubled), now));
+    assert!(sensitive > plain * 1.9);
+
+    // 120 diverted increments are one revolution of 20 native ratchets.
+    let revolution = zoom(direction.advance(
+        &Action::ZoomIn,
+        120,
+        ScrollScale::new(TRACED, ThumbwheelSensitivity::DEFAULT),
+        now,
+    ));
+    assert_distance(revolution, 20.0 * ZOOM_PER_TICK);
+}
+
+#[test]
+fn zoom_never_leaves_discrete_progress_behind() {
+    let mut direction = WheelDirection::default();
+    let now = Instant::now();
+    let scale = unscaled(ThumbwheelSensitivity::DEFAULT);
+    let threshold = ThumbwheelSensitivity::DEFAULT.action_threshold();
+
+    assert_eq!(
+        direction.advance(&Action::VolumeUp, threshold - 1, scale, now),
+        WheelOutput::Idle
+    );
+    zoom(direction.advance(&Action::ZoomIn, 1, scale, now));
+    assert_eq!(
+        direction.advance(&Action::VolumeUp, 1, scale, now),
+        WheelOutput::Idle,
+        "returning to an action must not recover progress from before zooming"
+    );
+}

@@ -193,6 +193,10 @@ pub enum NativeAction {
     Sleep,
     /// Toggle Smart Zoom (a two-finger double tap on a trackpad).
     SmartZoom,
+    /// One zoom-in step (a short trackpad pinch out).
+    ZoomIn,
+    /// One zoom-out step (a short trackpad pinch in).
+    ZoomOut,
 }
 
 /// A power-user scripting escape hatch, borrowed from the originating
@@ -255,6 +259,8 @@ impl Action {
             Action::CaptureRegion => Effect::Native(NativeAction::CaptureRegion),
             Action::Sleep => Effect::Native(NativeAction::Sleep),
             Action::SmartZoom => Effect::Native(NativeAction::SmartZoom),
+            Action::ZoomIn => Effect::Native(NativeAction::ZoomIn),
+            Action::ZoomOut => Effect::Native(NativeAction::ZoomOut),
 
             Action::PlayPause => Effect::Media(MediaKey::PlayPause),
             Action::NextTrack => Effect::Media(MediaKey::NextTrack),

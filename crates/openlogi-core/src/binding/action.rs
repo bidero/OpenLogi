@@ -190,6 +190,12 @@ pub enum Action {
     /// Toggle Smart Zoom in the app under the pointer, like a two-finger
     /// double tap on a trackpad. macOS only; other platforms ignore it.
     SmartZoom,
+    /// Zoom in the app under the pointer, like a trackpad pinch out. Bound to
+    /// a thumb-wheel direction it zooms continuously with the rotation; on a
+    /// button it zooms one step. macOS only; other platforms ignore it.
+    ZoomIn,
+    /// Zoom out, like a trackpad pinch in. See [`Action::ZoomIn`].
+    ZoomOut,
 }
 
 /// One step in a [`Action::Workflow`]. A workflow is a `Vec<WorkflowStep>`
@@ -267,6 +273,8 @@ macro_rules! for_each_unit_action {
             ShowDesktop "Show Desktop" "actions.show_desktop" Navigation Monitor,
             LaunchpadShow "Launchpad" "actions.launchpad" Navigation Applications,
             SmartZoom "Smart Zoom" "actions.smart_zoom" Navigation Search,
+            ZoomIn "Zoom In" "actions.zoom_in" Navigation Search,
+            ZoomOut "Zoom Out" "actions.zoom_out" Navigation Search,
             // System
             None "Do Nothing" "pointer.do_nothing" System Ban,
             LockScreen "Lock Screen" "actions.lock_screen" System Lock,

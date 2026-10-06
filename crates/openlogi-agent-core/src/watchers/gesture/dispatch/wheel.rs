@@ -21,6 +21,10 @@ const ACTION_DECAY: Duration = Duration::from_millis(300);
 /// flick triggers once instead of repeating across a fast spin.
 const ACTION_COOLDOWN: Duration = Duration::from_millis(200);
 
+/// Pinch magnification one native wheel tick contributes while zooming. A
+/// quick spin of ten ticks therefore zooms about 40 %.
+const ZOOM_PER_TICK: f64 = 0.04;
+
 /// Per-direction wheel state. Reversing the physical wheel must not cancel
 /// progress already earned in the other direction.
 #[derive(Default)]
@@ -107,6 +111,9 @@ impl WheelDirection {
         if let Some(binding) = ScrollBinding::from_action(action) {
             return self.advance_scroll(binding, magnitude, scale);
         }
+        if let Some(zoom) = ZoomBinding::from_action(action) {
+            return self.advance_zoom(zoom, magnitude, scale);
+        }
         self.advance_action(action, magnitude, scale.sensitivity, now)
     }
 
@@ -128,6 +135,27 @@ impl WheelDirection {
             WheelOutput::Idle
         } else {
             binding.output(distance)
+        }
+    }
+
+    /// Emit continuous zoom immediately, like a trackpad pinch. Like scroll,
+    /// it is a mode of its own: returning to a discrete action starts fresh.
+    fn advance_zoom(
+        &mut self,
+        binding: ZoomBinding,
+        magnitude: i32,
+        scale: ScrollScale,
+    ) -> WheelOutput {
+        let context = ZoomContext { binding, scale };
+        if !matches!(&self.state, WheelState::Zoom(previous) if *previous == context) {
+            self.state = WheelState::Zoom(context);
+        }
+        let magnification =
+            binding.sign() * f64::from(magnitude) * scale.per_increment() * ZOOM_PER_TICK;
+        if magnification == 0.0 {
+            WheelOutput::Idle
+        } else {
+            WheelOutput::Zoom(magnification)
         }
     }
 
@@ -189,6 +217,8 @@ enum WheelState {
     Idle,
     /// Continuous scrolling under one exact axis, resolution, and sensitivity.
     Scroll(ScrollContext),
+    /// Continuous zoom under one exact direction and sensitivity.
+    Zoom(ZoomContext),
     /// Increment progress and timing retained for one exact discrete binding.
     Action {
         binding: DiscreteBinding,
@@ -203,6 +233,38 @@ enum WheelState {
 struct ScrollContext {
     binding: ScrollBinding,
     scale: ScrollScale,
+}
+
+/// Identity of one continuous-zoom mode.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ZoomContext {
+    binding: ZoomBinding,
+    scale: ScrollScale,
+}
+
+/// Direction encoded by a continuous-zoom action.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ZoomBinding {
+    In,
+    Out,
+}
+
+impl ZoomBinding {
+    fn from_action(action: &Action) -> Option<Self> {
+        match action {
+            Action::ZoomIn => Some(Self::In),
+            Action::ZoomOut => Some(Self::Out),
+            _ => None,
+        }
+    }
+
+    /// Sign of the pinch magnification: positive zooms in.
+    fn sign(self) -> f64 {
+        match self {
+            Self::In => 1.0,
+            Self::Out => -1.0,
+        }
+    }
 }
 
 /// Identity of one discrete binding, including the threshold it uses.
@@ -251,6 +313,8 @@ pub(super) enum WheelOutput {
     Idle,
     /// Typed fractional distance for the smooth-scroll runtime or injector.
     Scroll(ScrollDelta),
+    /// Pinch-zoom increment: positive zooms in, negative out.
+    Zoom(f64),
     /// Fire the direction's bound discrete action.
     FireAction,
 }

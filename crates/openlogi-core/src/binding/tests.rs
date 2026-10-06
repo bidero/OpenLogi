@@ -388,6 +388,8 @@ fn persisted_action_variant_names_are_stable() {
         "VolumeDown",
         "VolumeUp",
         "Workflow",
+        "ZoomIn",
+        "ZoomOut",
     ];
     expected.sort_unstable();
     assert_eq!(actual, expected);
@@ -661,4 +663,18 @@ fn scroll_actions_lower_to_unit_direction() {
         Action::HorizontalScrollRight.effect(),
         Effect::Scroll { dx: 1, dy: 0 }
     );
+}
+
+#[test]
+fn zoom_actions_are_native_pinch_steps() {
+    assert_eq!(
+        Action::ZoomIn.effect(),
+        Effect::Native(NativeAction::ZoomIn)
+    );
+    assert_eq!(
+        Action::ZoomOut.effect(),
+        Effect::Native(NativeAction::ZoomOut)
+    );
+    assert_eq!(Action::ZoomIn.category(), Category::Navigation);
+    assert_eq!(roundtrip(&Action::ZoomOut), Action::ZoomOut);
 }

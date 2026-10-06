@@ -139,7 +139,9 @@ fn dispatch_native(action: &Action, native: NativeAction) {
         | NativeAction::AppExpose
         | NativeAction::ShowDesktop
         | NativeAction::LaunchpadShow
-        | NativeAction::SmartZoom => {
+        | NativeAction::SmartZoom
+        | NativeAction::ZoomIn
+        | NativeAction::ZoomOut => {
             tracing::debug!(
                 action = action.label(),
                 "no Linux equivalent — action skipped"
