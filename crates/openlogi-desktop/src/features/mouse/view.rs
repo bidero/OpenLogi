@@ -130,6 +130,9 @@ pub struct MouseModelView {
     /// The gesture direction whose action is open in the fixed inspector.
     gesture_active_dir: Option<GestureDirection>,
     action_picker_open: bool,
+    /// The thumb-wheel direction whose action library is open; `None` for
+    /// every other picker (the thumb-wheel preset list included).
+    picker_target: Option<ButtonId>,
     action_search: Entity<InputState>,
     /// The custom-shortcut field in the action library.
     shortcut_input: Entity<ShortcutField>,
@@ -163,6 +166,7 @@ impl MouseModelView {
             selected: None,
             gesture_active_dir: None,
             action_picker_open: false,
+            picker_target: None,
             action_search,
             shortcut_input,
             _state_obs: state_obs,
@@ -176,8 +180,11 @@ impl MouseModelView {
         self.action_picker_open = false;
     }
 
-    pub(super) fn toggle_action_picker(&mut self) {
-        self.action_picker_open = !self.action_picker_open;
+    /// Open the picker for `target` (`None` for a control's own picker), or
+    /// close it when that same picker is already open.
+    pub(super) fn toggle_action_picker(&mut self, target: Option<ButtonId>) {
+        self.action_picker_open = !(self.action_picker_open && self.picker_target == target);
+        self.picker_target = target;
     }
 
     pub(super) fn close_action_picker(&mut self) {
@@ -326,6 +333,7 @@ impl Render for MouseModelView {
                 selected: self.selected,
                 gesture_direction: self.gesture_active_dir,
                 action_picker_open: self.action_picker_open,
+                picker_target: self.picker_target,
                 bindings,
                 gesture_maps,
                 dpi_gestures,

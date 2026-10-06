@@ -34,6 +34,8 @@ pub(super) struct BindingInspectorData<'a> {
     pub selected: Option<MouseControlId>,
     pub gesture_direction: Option<GestureDirection>,
     pub action_picker_open: bool,
+    /// The thumb-wheel direction whose action library is open, if any.
+    pub picker_target: Option<ButtonId>,
     pub bindings: &'a BTreeMap<ButtonId, Action>,
     pub gesture_maps: &'a BTreeMap<ButtonId, BTreeMap<GestureDirection, Action>>,
     pub dpi_gestures: bool,
@@ -44,6 +46,7 @@ pub(super) struct BindingInspectorData<'a> {
 #[derive(Clone, Copy)]
 struct ActionPickerContext<'a> {
     open: bool,
+    target: Option<ButtonId>,
     search: &'a Entity<InputState>,
     shortcut: &'a Entity<ShortcutField>,
     view: &'a Entity<MouseModelView>,
@@ -59,6 +62,7 @@ pub(super) fn binding_inspector(
     let pal = theme::palette(cx);
     let picker = ActionPickerContext {
         open: data.action_picker_open,
+        target: data.picker_target,
         search: action_search,
         shortcut: shortcut_input,
         view,
@@ -75,6 +79,7 @@ pub(super) fn binding_inspector(
             data.overridden,
             picker,
             pal,
+            cx,
         ),
         Some(MouseControlId::Button(button)) => button_inspector(button, &data, picker, pal, cx),
     };
@@ -429,6 +434,7 @@ fn thumbwheel_inspector(
     overridden: Option<&BTreeMap<ButtonId, Action>>,
     picker: ActionPickerContext<'_>,
     pal: Palette,
+    cx: &Context<MouseModelView>,
 ) -> gpui::Div {
     let backward = bindings
         .get(&ButtonId::ThumbwheelScrollDown)
@@ -453,7 +459,6 @@ fn thumbwheel_inspector(
         |preset| tr!(preset.translation_key()),
     );
     let current_icon = current.map_or("action-icons/chevrons-right.svg", ThumbwheelPreset::icon);
-    let observer = picker.view.clone();
 
     v_flex()
         .gap_3()
@@ -467,53 +472,29 @@ fn thumbwheel_inspector(
             tr!("common.preset"),
             current_icon,
             current_label,
+            None,
             picker,
             pal,
         ))
-        .when(picker.open, |panel| {
-            panel.child(
-                v_flex()
-                    .gap_1()
-                    .child(editor_section(tr!("common.preset"), pal))
-                    .children(ThumbwheelPreset::ALL.into_iter().enumerate().map(
-                        |(index, preset)| {
-                            let selected = current == Some(preset);
-                            let observer = observer.clone();
-                            MenuRow::new(("inspector-thumbwheel", index))
-                                .selected(selected)
-                                .role(Role::Button)
-                                .child(
-                                    h_flex()
-                                        .items_center()
-                                        .gap_2()
-                                        .child(
-                                            svg()
-                                                .path(preset.icon())
-                                                .size_4()
-                                                .text_color(pal.text_muted),
-                                        )
-                                        .child(div().child(tr!(preset.translation_key()))),
-                                )
-                                .when(selected, |row| {
-                                    row.child(
-                                        Icon::new(IconName::Check)
-                                            .size_3()
-                                            .text_color(rgb(ACCENT_BLUE)),
-                                    )
-                                })
-                                .on_click(move |_, _, cx| {
-                                    AppState::apply(cx, |state| {
-                                        state.commit_thumbwheel_preset(preset)
-                                    });
-                                    observer.update(cx, |view, cx| {
-                                        view.close_action_picker();
-                                        cx.notify();
-                                    });
-                                })
-                        },
-                    )),
-            )
+        .when(picker.open && picker.target.is_none(), |panel| {
+            panel.child(thumbwheel_preset_list(current, picker.view, pal))
         })
+        .child(thumbwheel_direction(
+            "inspector-thumbwheel-up",
+            ButtonId::ThumbwheelScrollUp,
+            &forward,
+            picker,
+            pal,
+            cx,
+        ))
+        .child(thumbwheel_direction(
+            "inspector-thumbwheel-down",
+            ButtonId::ThumbwheelScrollDown,
+            &backward,
+            picker,
+            pal,
+            cx,
+        ))
         .when(is_overridden, |panel| {
             let observer = picker.view.clone();
             panel.child(
@@ -530,6 +511,99 @@ fn thumbwheel_inspector(
                         });
                     }),
             )
+        })
+}
+
+/// The thumb-wheel preset list: paired actions applied to both directions.
+fn thumbwheel_preset_list(
+    current: Option<ThumbwheelPreset>,
+    view: &Entity<MouseModelView>,
+    pal: Palette,
+) -> gpui::Div {
+    let observer = view.clone();
+
+    v_flex()
+        .gap_1()
+        .child(editor_section(tr!("common.preset"), pal))
+        .children(
+            ThumbwheelPreset::ALL
+                .into_iter()
+                .enumerate()
+                .map(|(index, preset)| {
+                    let selected = current == Some(preset);
+                    let observer = observer.clone();
+                    MenuRow::new(("inspector-thumbwheel", index))
+                        .selected(selected)
+                        .role(Role::Button)
+                        .child(
+                            h_flex()
+                                .items_center()
+                                .gap_2()
+                                .child(
+                                    svg()
+                                        .path(preset.icon())
+                                        .size_4()
+                                        .text_color(pal.text_muted),
+                                )
+                                .child(div().child(tr!(preset.translation_key()))),
+                        )
+                        .when(selected, |row| {
+                            row.child(
+                                Icon::new(IconName::Check)
+                                    .size_3()
+                                    .text_color(rgb(ACCENT_BLUE)),
+                            )
+                        })
+                        .on_click(move |_, _, cx| {
+                            AppState::apply(cx, |state| state.commit_thumbwheel_preset(preset));
+                            observer.update(cx, |view, cx| {
+                                view.close_action_picker();
+                                cx.notify();
+                            });
+                        })
+                }),
+        )
+}
+
+/// One thumb-wheel direction's own action: a card that opens the full action
+/// library, custom shortcut included, for just that direction.
+fn thumbwheel_direction(
+    id: &'static str,
+    button: ButtonId,
+    action: &Action,
+    picker: ActionPickerContext<'_>,
+    pal: Palette,
+    cx: &Context<MouseModelView>,
+) -> gpui::Div {
+    let observer = picker.view.clone();
+    let on_pick: PickFn = Rc::new(move |action, _window, cx| {
+        AppState::apply(cx, |state| state.commit_binding(button, action));
+        observer.update(cx, |view, cx| {
+            view.close_action_picker();
+            cx.notify();
+        });
+    });
+    v_flex()
+        .gap_2()
+        .child(selection_card(
+            id,
+            tr!(button.translation_key()),
+            action_icon_path(action),
+            localized_action_label(action),
+            Some(button),
+            picker,
+            pal,
+        ))
+        .when(picker.open && picker.target == Some(button), |panel| {
+            panel.child(action_library(
+                id,
+                Some(action),
+                picker.search,
+                picker.shortcut,
+                &on_pick,
+                pal,
+                cx,
+            ))
         })
 }
 
@@ -559,6 +633,7 @@ fn current_action_card(
         tr!("actions.current_action"),
         action_icon_path(action),
         localized_action_label(action),
+        None,
         picker,
         pal,
     )
@@ -570,21 +645,28 @@ fn gesture_summary_card(picker: ActionPickerContext<'_>, pal: Palette) -> impl I
         tr!("actions.current_action"),
         GESTURE_BUTTON_ICON,
         tr!("actions.five_directions"),
+        None,
         picker,
         pal,
     )
 }
 
+/// A card that opens the picker for `target` (`None` for the control's own).
 fn selection_card(
     id: &'static str,
     caption: gpui::SharedString,
     icon: &'static str,
     value: gpui::SharedString,
+    target: Option<ButtonId>,
     picker: ActionPickerContext<'_>,
     pal: Palette,
 ) -> impl IntoElement {
     let toggle = picker.view.clone();
     let search = picker.search.clone();
+    let picker = ActionPickerContext {
+        open: picker.open && picker.target == target,
+        ..picker
+    };
     let opening = !picker.open;
     let accessible_label = value.clone();
     BaseButton::new(id)
@@ -644,7 +726,7 @@ fn selection_card(
                 search.update(cx, |search, cx| search.set_value("", window, cx));
             }
             toggle.update(cx, |view, cx| {
-                view.toggle_action_picker();
+                view.toggle_action_picker(target);
                 cx.notify();
             });
         })

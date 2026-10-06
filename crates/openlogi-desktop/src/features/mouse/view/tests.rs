@@ -88,6 +88,7 @@ fn a_selected_gesture_can_render_in_the_binding_inspector(cx: &mut TestAppContex
                 selected: Some(MouseControlId::Button(ButtonId::MiddleClick)),
                 gesture_direction: Some(GestureDirection::Up),
                 action_picker_open: false,
+                picker_target: None,
                 bindings: &bindings,
                 gesture_maps: &gesture_maps,
                 dpi_gestures: false,
@@ -121,6 +122,76 @@ fn selecting_another_control_closes_the_action_picker(cx: &mut TestAppContext) {
 
         assert!(!view.action_picker_open);
     });
+    drop(view);
+    cx.update(|window, _| window.remove_window());
+    cx.run_until_parked();
+}
+
+#[gpui::test]
+fn each_thumbwheel_direction_toggles_its_own_picker(cx: &mut TestAppContext) {
+    cx.update(gpui_component::init);
+    install_app_state(cx);
+    let (view, cx) = cx.add_window_view(MouseModelView::new);
+    cx.run_until_parked();
+
+    view.update(cx, |view, _| {
+        let up = Some(ButtonId::ThumbwheelScrollUp);
+        let down = Some(ButtonId::ThumbwheelScrollDown);
+
+        view.toggle_action_picker(up);
+        assert!(view.action_picker_open);
+        assert_eq!(view.picker_target, up);
+
+        view.toggle_action_picker(down);
+        assert!(view.action_picker_open, "the other direction stays open");
+        assert_eq!(view.picker_target, down);
+
+        view.toggle_action_picker(down);
+        assert!(!view.action_picker_open, "the same card closes it");
+
+        view.toggle_action_picker(None);
+        assert!(view.action_picker_open);
+        assert_eq!(view.picker_target, None);
+    });
+    drop(view);
+    cx.update(|window, _| window.remove_window());
+    cx.run_until_parked();
+}
+
+#[gpui::test]
+fn the_thumbwheel_inspector_renders_a_direction_library(cx: &mut TestAppContext) {
+    cx.update(gpui_component::init);
+    install_app_state(cx);
+    let (view, cx) = cx.add_window_view(MouseModelView::new);
+    cx.run_until_parked();
+
+    view.update(cx, |view, cx| {
+        let bindings = BTreeMap::from([(
+            ButtonId::ThumbwheelScrollUp,
+            Action::CustomShortcut("Cmd+Shift+]".parse().expect("valid shortcut")),
+        )]);
+        let gesture_maps = BTreeMap::new();
+        let entity = cx.entity();
+
+        binding_inspector(
+            BindingInspectorData {
+                selected: Some(MouseControlId::ThumbwheelRotation),
+                gesture_direction: None,
+                action_picker_open: true,
+                picker_target: Some(ButtonId::ThumbwheelScrollUp),
+                bindings: &bindings,
+                gesture_maps: &gesture_maps,
+                dpi_gestures: false,
+                editing_app: None,
+                overridden: None,
+            },
+            &view.action_search,
+            &view.shortcut_input,
+            &entity,
+            cx,
+        );
+    });
+    cx.run_until_parked();
     drop(view);
     cx.update(|window, _| window.remove_window());
     cx.run_until_parked();
